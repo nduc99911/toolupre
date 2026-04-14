@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReupMaster Pro - Social Media Automation</title>
+    <meta name="description" content="Professional social media reup and scheduling automation tool">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+</head>
+<body>
+
+<div class="app-layout">
+    <!-- ═══ SIDEBAR ═══ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🚀</div>
+                <div>
+                    <div class="logo-text">ReupMaster</div>
+                    <span class="logo-badge">PRO v2.0</span>
+                </div>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">Tổng quan</div>
+                <div class="nav-item active" data-page="dashboard" id="nav-dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Công cụ</div>
+                <div class="nav-item" data-page="download" id="nav-download">
+                    <span class="nav-icon">⬇️</span>
+                    <span>Tải Video</span>
+                </div>
+                <div class="nav-item" data-page="library" id="nav-library">
+                    <span class="nav-icon">🎬</span>
+                    <span>Thư viện</span>
+                    <span class="nav-badge" id="badge-library">0</span>
+                </div>
+                <div class="nav-item" data-page="process" id="nav-process">
+                    <span class="nav-icon">⚡</span>
+                    <span>Xử lý Video</span>
+                </div>
+                <div class="nav-item" data-page="ai" id="nav-ai">
+                    <span class="nav-icon">🤖</span>
+                    <span>AI Viết lại</span>
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Đăng bài</div>
+                <div class="nav-item" data-page="publish" id="nav-publish">
+                    <span class="nav-icon">📤</span>
+                    <span>Đăng / Lên lịch</span>
+                </div>
+                <div class="nav-item" data-page="schedule" id="nav-schedule">
+                    <span class="nav-icon">📅</span>
+                    <span>Lịch đăng</span>
+                    <span class="nav-badge" id="badge-schedule">0</span>
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Cấu hình</div>
+                <div class="nav-item" data-page="pages" id="nav-pages">
+                    <span class="nav-icon">📘</span>
+                    <span>Facebook Pages</span>
+                </div>
+                <div class="nav-item" data-page="settings" id="nav-settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span>Cài đặt</span>
+                </div>
+                <div class="nav-item" data-page="logs" id="nav-logs">
+                    <span class="nav-icon">📜</span>
+                    <span>Logs</span>
+                </div>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="version">ReupMaster Pro v2.0.0 • 2026</div>
+        </div>
+    </aside>
+
+    <!-- ═══ MAIN CONTENT ═══ -->
+    <main class="main-content">
+        <header class="main-header">
+            <div class="header-left">
+                <button class="btn-header" id="btn-menu" onclick="document.getElementById('sidebar').classList.toggle('open')" style="display:none;">☰</button>
+                <h1 class="header-title" id="page-title">Dashboard</h1>
+            </div>
+            <div class="header-right">
+                <div class="btn-header">
+                    <span class="status-dot"></span>
+                    <span id="scheduler-status">Scheduler: Active</span>
+                </div>
+                <button class="btn-header" onclick="loadStats()">🔄 Refresh</button>
+            </div>
+        </header>
+
+        <div class="page-content">
+
+            <!-- ═══════════ DASHBOARD ═══════════ -->
+            <div class="page active" id="page-dashboard">
+                <div class="stats-grid" id="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🎬</div>
+                        <div class="stat-value" id="stat-total">0</div>
+                        <div class="stat-label">Tổng Video</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⬇️</div>
+                        <div class="stat-value" id="stat-downloaded">0</div>
+                        <div class="stat-label">Đã tải</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⚡</div>
+                        <div class="stat-value" id="stat-processed">0</div>
+                        <div class="stat-label">Đã xử lý</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-value" id="stat-published">0</div>
+                        <div class="stat-label">Đã đăng</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📘</div>
+                        <div class="stat-value" id="stat-pages">0</div>
+                        <div class="stat-label">FB Pages</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-value" id="stat-pending">0</div>
+                        <div class="stat-label">Đang chờ đăng</div>
+                    </div>
+                </div>
+
+                <div class="two-col">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🕐</span> Video gần đây</div>
+                        </div>
+                        <div id="recent-videos">
+                            <div class="empty-state">
+                                <div class="empty-icon">🎬</div>
+                                <div class="empty-title">Chưa có video nào</div>
+                                <div class="empty-desc">Bắt đầu bằng cách tải video từ TikTok, Douyin hoặc Facebook</div>
+                                <button class="btn btn-primary" onclick="navigateTo('download')">⬇️ Tải video ngay</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📅</span> Bài đăng sắp tới</div>
+                        </div>
+                        <div id="upcoming-posts">
+                            <div class="empty-state">
+                                <div class="empty-icon">📅</div>
+                                <div class="empty-title">Chưa có lịch đăng</div>
+                                <div class="empty-desc">Lên lịch đăng bài tự động cho Facebook Pages</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ DOWNLOAD ═══════════ -->
+            <div class="page" id="page-download">
+                <div class="two-col">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">⬇️</span> Tải Video đơn</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">URL Video</label>
+                            <div class="url-input-wrapper">
+                                <input type="text" class="form-input" id="download-url" 
+                                       placeholder="Dán link TikTok, Douyin, Facebook, YouTube..."
+                                       oninput="detectPlatform(this)">
+                                <span class="platform-badge" id="platform-badge" style="display:none;"></span>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary btn-lg" id="btn-download" onclick="downloadSingle()" style="width:100%;">
+                            ⬇️ Tải Video
+                        </button>
+                        <div id="download-status" style="margin-top: 16px;"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📦</span> Tải hàng loạt</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Danh sách URL (mỗi dòng 1 link)</label>
+                            <textarea class="form-textarea batch-urls" id="batch-urls" 
+                                      placeholder="https://www.tiktok.com/@user/video/123...&#10;https://www.douyin.com/video/456...&#10;https://www.facebook.com/watch/?v=789..."></textarea>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:12px; color:var(--text-tertiary);" id="batch-count">0 URLs</span>
+                            <button class="btn btn-secondary" onclick="downloadBatch()">
+                                📦 Tải hàng loạt
+                            </button>
+                        </div>
+                        <div id="batch-status" style="margin-top: 16px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ LIBRARY ═══════════ -->
+            <div class="page" id="page-library">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+                    <div class="tabs" id="library-tabs">
+                        <button class="tab-btn active" onclick="filterVideos('all', this)">Tất cả</button>
+                        <button class="tab-btn" onclick="filterVideos('downloaded', this)">Đã tải</button>
+                        <button class="tab-btn" onclick="filterVideos('processed', this)">Đã xử lý</button>
+                        <button class="tab-btn" onclick="filterVideos('published', this)">Đã đăng</button>
+                        <button class="tab-btn" onclick="filterVideos('failed', this)">Lỗi</button>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="loadVideos()">🔄 Làm mới</button>
+                </div>
+                <div class="video-grid" id="video-grid">
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <div class="empty-icon">🎬</div>
+                        <div class="empty-title">Thư viện trống</div>
+                        <div class="empty-desc">Tải video để bắt đầu</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ PROCESS ═══════════ -->
+            <div class="page" id="page-process">
+                <div class="card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">🎬</span> Chọn Video để xử lý</div>
+                    </div>
+                    <div class="form-group">
+                        <select class="form-select" id="process-video-select" onchange="showProcessPreview(this.value)">
+                            <option value="">-- Chọn video --</option>
+                        </select>
+                    </div>
+                    <div id="process-preview" style="display:none;">
+                        <div class="publish-preview">
+                            <video id="process-video-player" controls style="width:100%;max-height:250px;border-radius:8px;"></video>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">⚡</span> Tùy chọn xử lý (Lách bản quyền)</div>
+                        <button class="btn btn-ghost btn-sm" onclick="resetProcessOptions()">🔄 Mặc định</button>
+                    </div>
+                    <div class="options-grid" id="process-options-grid"></div>
+                </div>
+
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <div style="font-size:14px; font-weight:600;">Sẵn sàng xử lý</div>
+                            <div style="font-size:12px; color:var(--text-tertiary);">Video sẽ được xử lý với các tùy chọn đã chọn</div>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn btn-primary btn-lg" onclick="processVideo()">
+                                ⚡ Xử lý Video
+                            </button>
+                            <button class="btn btn-secondary btn-lg" onclick="processAllVideos()">
+                                📦 Xử lý tất cả
+                            </button>
+                        </div>
+                    </div>
+                    <div id="process-status" style="margin-top: 16px;"></div>
+                </div>
+            </div>
+
+            <!-- ═══════════ AI REWRITE ═══════════ -->
+            <div class="page" id="page-ai">
+                <div class="two-col">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🤖</span> AI Viết lại Caption</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Phong cách</label>
+                            <div class="style-grid" id="ai-style-grid">
+                                <div class="style-card active" data-style="viral" onclick="selectStyle(this)">
+                                    <div class="style-icon">🔥</div>
+                                    <div class="style-name">Viral</div>
+                                </div>
+                                <div class="style-card" data-style="professional" onclick="selectStyle(this)">
+                                    <div class="style-icon">💼</div>
+                                    <div class="style-name">Chuyên nghiệp</div>
+                                </div>
+                                <div class="style-card" data-style="funny" onclick="selectStyle(this)">
+                                    <div class="style-icon">😂</div>
+                                    <div class="style-name">Hài hước</div>
+                                </div>
+                                <div class="style-card" data-style="storytelling" onclick="selectStyle(this)">
+                                    <div class="style-icon">📖</div>
+                                    <div class="style-name">Kể chuyện</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Nội dung gốc / Mô tả video</label>
+                            <textarea class="form-textarea" id="ai-input" 
+                                      placeholder="Nhập nội dung hoặc mô tả video cần viết lại..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Niche / Chủ đề (tùy chọn)</label>
+                            <input type="text" class="form-input" id="ai-niche" placeholder="VD: motivation, cooking, funny...">
+                        </div>
+                        <button class="btn btn-primary btn-lg" onclick="aiRewrite()" style="width:100%;" id="btn-ai-rewrite">
+                            🤖 Viết lại bằng AI
+                        </button>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">✨</span> Kết quả AI</div>
+                            <button class="btn btn-ghost btn-sm" onclick="copyAIResult()">📋 Copy</button>
+                        </div>
+                        <div id="ai-result">
+                            <div class="empty-state">
+                                <div class="empty-icon">🤖</div>
+                                <div class="empty-title">Chưa có kết quả</div>
+                                <div class="empty-desc">Nhập nội dung và nhấn "Viết lại bằng AI"</div>
+                            </div>
+                        </div>
+
+                        <hr style="border-color: var(--border-color); margin: 20px 0;">
+
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">#️⃣</span> Tạo Hashtag</div>
+                        </div>
+                        <div class="form-group">
+                            <input type="text" class="form-input" id="hashtag-topic" placeholder="Nhập chủ đề để tạo hashtag...">
+                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="generateHashtags()">
+                            #️⃣ Tạo Hashtag
+                        </button>
+                        <div id="hashtag-result" style="margin-top: 12px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ PUBLISH ═══════════ -->
+            <div class="page" id="page-publish">
+                <div class="two-col">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📤</span> Đăng / Lên lịch Video</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Chọn Video</label>
+                            <select class="form-select" id="publish-video-select" onchange="showPublishPreview(this.value)">
+                                <option value="">-- Chọn video đã xử lý --</option>
+                            </select>
+                        </div>
+
+                        <div id="publish-preview-area" style="display:none;margin-bottom:16px;">
+                            <div class="publish-preview">
+                                <video id="publish-video-player" controls style="width:100%;max-height:200px;border-radius:8px;"></video>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Chọn Facebook Page</label>
+                            <div id="page-select-list"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Caption</label>
+                            <textarea class="form-textarea" id="publish-caption" 
+                                      placeholder="Nhập caption cho bài đăng..."></textarea>
+                            <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="aiGenerateCaption()">
+                                🤖 AI tạo caption
+                            </button>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Hashtags</label>
+                            <input type="text" class="form-input" id="publish-hashtags" 
+                                   placeholder="#trending #viral #fyp">
+                        </div>
+
+                        <div class="form-group">
+                            <div class="toggle-group">
+                                <input type="checkbox" class="toggle" id="schedule-toggle" onchange="toggleSchedule()">
+                                <div>
+                                    <div class="toggle-label">Lên lịch đăng</div>
+                                    <div class="toggle-desc">Chọn thời gian đăng bài tự động</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="schedule-time-group" style="display:none;">
+                            <label class="form-label">Thời gian đăng</label>
+                            <input type="datetime-local" class="form-input" id="schedule-datetime">
+                        </div>
+
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn btn-primary btn-lg" onclick="publishOrSchedule()" style="flex:1;">
+                                📤 Đăng ngay
+                            </button>
+                        </div>
+                        <div id="publish-status" style="margin-top: 16px;"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📋</span> Hướng dẫn nhanh</div>
+                        </div>
+                        <div style="font-size:13px; line-height:1.8; color:var(--text-secondary);">
+                            <p><strong>1. Tải video</strong> từ TikTok, Douyin, Facebook</p>
+                            <p><strong>2. Xử lý video</strong> bằng FFmpeg (flip, đổi tốc độ, thêm noise...)</p>
+                            <p><strong>3. AI viết lại</strong> caption và hashtag</p>
+                            <p><strong>4. Đăng/Lên lịch</strong> lên Facebook Page</p>
+                            <hr style="border-color: var(--border-color); margin: 16px 0;">
+                            <p style="color:var(--accent-warning);">⚠️ <strong>Lưu ý:</strong></p>
+                            <p>• Cần Page Access Token có quyền <code>pages_manage_posts</code> và <code>pages_read_engagement</code></p>
+                            <p>• Video phải nhỏ hơn 1GB để upload trực tiếp</p>
+                            <p>• Lên lịch phải cách hiện tại ít nhất 10 phút</p>
+                            <p>• Facebook có thể giới hạn API nếu đăng quá nhiều</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ SCHEDULE ═══════════ -->
+            <div class="page" id="page-schedule">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">📅</span> Lịch đăng bài</div>
+                        <button class="btn btn-ghost btn-sm" onclick="loadSchedule()">🔄 Làm mới</button>
+                    </div>
+                    <div class="schedule-list" id="schedule-list">
+                        <div class="empty-state">
+                            <div class="empty-icon">📅</div>
+                            <div class="empty-title">Chưa có bài nào được lên lịch</div>
+                            <div class="empty-desc">Đi tới "Đăng / Lên lịch" để tạo bài đăng mới</div>
+                            <button class="btn btn-primary" onclick="navigateTo('publish')">📤 Tạo bài đăng</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ FB PAGES ═══════════ -->
+            <div class="page" id="page-pages">
+                <div class="two-col">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📘</span> Facebook Pages</div>
+                            <button class="btn btn-ghost btn-sm" onclick="loadFBPages()">🔄 Làm mới</button>
+                        </div>
+
+                        <!-- Login Status -->
+                        <div id="fb-login-status" style="margin-bottom:20px;">
+                            <div style="background:var(--bg-tertiary);border-radius:var(--radius-md);padding:16px;display:flex;align-items:center;gap:14px;">
+                                <div style="width:42px;height:42px;background:linear-gradient(135deg,#1877F2,#42b72a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📘</div>
+                                <div style="flex:1;">
+                                    <div style="font-size:13px;font-weight:600;" id="fb-login-user">Chưa đăng nhập Facebook</div>
+                                    <div style="font-size:11px;color:var(--text-tertiary);" id="fb-login-detail">Đăng nhập để tự động lấy danh sách Pages</div>
+                                </div>
+                                <button class="btn btn-primary" onclick="loginFacebook()" id="btn-fb-login" style="background:linear-gradient(135deg,#1877F2,#42b72a);box-shadow:0 4px 15px rgba(24,119,242,0.3);">
+                                    🔐 Đăng nhập Facebook
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Pages List -->
+                        <div id="fb-pages-list">
+                            <div class="empty-state">
+                                <div class="empty-icon">📘</div>
+                                <div class="empty-title">Chưa có Page nào</div>
+                                <div class="empty-desc">Nhấn "Đăng nhập Facebook" để bắt đầu</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🔧</span> Thêm Page thủ công</div>
+                        </div>
+
+                        <div style="margin-bottom:20px;">
+                            <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px;line-height:1.6;">
+                                💡 Nếu không dùng OAuth login, bạn có thể dán token thủ công từ 
+                                <a href="https://developers.facebook.com/tools/explorer/" target="_blank">Graph API Explorer</a>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Page Access Token</label>
+                            <textarea class="form-textarea" id="page-token-input" 
+                                      placeholder="Dán Page Access Token vào đây..." style="min-height:80px;font-family:monospace;font-size:11px;"></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="addFBPage()" style="width:100%;">
+                            ➕ Thêm Page
+                        </button>
+
+                        <hr style="border-color: var(--border-color); margin: 24px 0;">
+
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">👤</span> Import từ User Token</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">User Access Token</label>
+                            <textarea class="form-textarea" id="user-token-input" 
+                                      placeholder="Dán User Access Token để import tất cả Pages..." style="min-height:80px;font-family:monospace;font-size:11px;"></textarea>
+                        </div>
+                        <button class="btn btn-secondary" onclick="importPages()" style="width:100%;">
+                            📥 Import tất cả Pages
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ SETTINGS ═══════════ -->
+            <div class="page" id="page-settings">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">⚙️</span> Cài đặt hệ thống</div>
+                    </div>
+                    <div id="settings-content">
+                        <div class="three-col">
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label">AI Provider</label>
+                                    <div id="setting-ai-provider" style="font-size:14px;font-weight:600;color:var(--accent-primary-light);">--</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">OpenAI API Key</label>
+                                    <div id="setting-openai" class="badge badge-pending">Chưa cấu hình</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Gemini API Key</label>
+                                    <div id="setting-gemini" class="badge badge-pending">Chưa cấu hình</div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label">Facebook App</label>
+                                    <div id="setting-fb" class="badge badge-pending">Chưa cấu hình</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">FFmpeg Path</label>
+                                    <div id="setting-ffmpeg" style="font-size:13px;color:var(--text-secondary);">--</div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label">Thư mục tải về</label>
+                                    <div id="setting-download-dir" style="font-size:12px;color:var(--text-tertiary);word-break:break-all;">--</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Thư mục đã xử lý</label>
+                                    <div id="setting-processed-dir" style="font-size:12px;color:var(--text-tertiary);word-break:break-all;">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        <hr style="border-color: var(--border-color); margin: 20px 0;">
+                        <div style="font-size:12px;color:var(--text-tertiary);">
+                            💡 Để thay đổi cài đặt, chỉnh sửa file <code>.env</code> và khởi động lại server.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ LOGS ═══════════ -->
+            <div class="page" id="page-logs">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">📜</span> System Logs</div>
+                        <div style="display:flex;gap:8px;">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
+                                <input type="checkbox" id="log-auto-scroll" checked class="toggle" style="width:36px;height:20px;">
+                                Auto-scroll
+                            </label>
+                            <button class="btn btn-ghost btn-sm" onclick="loadLogs()">🔄 Refresh</button>
+                            <button class="btn btn-ghost btn-sm" onclick="clearLogs()" style="color:var(--accent-danger);">🗑️ Clear</button>
+                        </div>
+                    </div>
+                    <div class="log-terminal" id="log-terminal">
+                        <div class="log-content" id="log-content">
+                            <div style="color:var(--text-tertiary);font-style:italic;">Loading logs...</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+                        <div style="font-size:11px;color:var(--text-tertiary);" id="log-count">0 entries</div>
+                        <div style="display:flex;gap:6px;">
+                            <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('all')" style="font-size:11px;">All</button>
+                            <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('ERROR')" style="font-size:11px;color:var(--accent-danger);">Errors</button>
+                            <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('WARNING')" style="font-size:11px;color:var(--accent-warning);">Warnings</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Modal Template -->
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="modal-title">Modal</div>
+            <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer" id="modal-footer"></div>
+    </div>
+</div>
+
+<!-- Video Player Modal -->
+<div class="modal-overlay" id="video-modal-overlay" onclick="if(event.target===this)closeVideoModal()">
+    <div class="modal" id="video-modal" style="max-width:700px;">
+        <div class="modal-header">
+            <div class="modal-title" id="video-modal-title">Video Player</div>
+            <button class="modal-close" onclick="closeVideoModal()">✕</button>
+        </div>
+        <div class="modal-body" style="padding:0;">
+            <video id="video-modal-player" controls autoplay style="width:100%;max-height:70vh;border-radius:0 0 12px 12px;background:#000;"></video>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
