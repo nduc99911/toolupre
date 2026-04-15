@@ -32,9 +32,25 @@ class PostScheduler:
                 name="Check and publish pending posts",
                 replace_existing=True,
             )
+            # Check for pending seeding tasks every 45 seconds
+            self.scheduler.add_job(
+                self._check_seeding_tasks,
+                trigger=IntervalTrigger(seconds=45),
+                id="check_seeding_tasks",
+                name="Execute pending seeding tasks",
+                replace_existing=True,
+            )
+            # Reset daily seeding limits at midnight
+            self.scheduler.add_job(
+                self._reset_daily_limits,
+                trigger=IntervalTrigger(hours=24),
+                id="reset_seeding_limits",
+                name="Reset daily seeding limits",
+                replace_existing=True,
+            )
             self.scheduler.start()
             self._running = True
-            logger.info("Post scheduler started")
+            logger.info("Post scheduler started (with seeding)")
 
     def stop(self):
         """Stop the scheduler."""
@@ -113,6 +129,25 @@ class PostScheduler:
                 "error_message": str(e),
             })
             logger.error(f"Exception publishing post {post_id}: {e}")
+
+    async def _check_seeding_tasks(self):
+        """Check and execute pending seeding tasks."""
+        try:
+            from app.services.seeding_service import run_pending_seeding_tasks
+            await run_pending_seeding_tasks()
+        except Exception as e:
+            logger.error(f"Error running seeding tasks: {e}")
+
+    async def _reset_daily_limits(self):
+        """Reset daily action limits for seeding accounts."""
+        try:
+            adb = await db.get_db()
+            await adb.execute("UPDATE seeding_accounts SET actions_today = 0")
+            await adb.commit()
+            await adb.close()
+            logger.info("Daily seeding limits reset")
+        except Exception as e:
+            logger.error(f"Error resetting daily limits: {e}")
 
     async def add_scheduled_post(self, video_id: str, page_id: str,
                                   scheduled_time: str, caption: str = "",

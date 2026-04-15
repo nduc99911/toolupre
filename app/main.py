@@ -905,3 +905,510 @@ async def api_clear_logs():
     """Clear log buffer."""
     memory_handler.clear()
     return {"success": True}
+
+
+# ═══════════════════════════════════════════
+# API: MASS SCHEDULING (SO9 Style)
+# ═══════════════════════════════════════════
+
+@app.post("/api/mass-schedule")
+async def api_mass_schedule(request: Request):
+    """
+    Mass schedule: distribute multiple videos across multiple pages
+    with staggered timing (SO9-style mass posting).
+    """
+    data = await request.json()
+    video_ids = data.get("video_ids", [])
+    page_ids = data.get("page_ids", [])
+    start_time = data.get("start_time", "")       # ISO datetime string
+    interval_minutes = int(data.get("interval", 30))  # minutes between posts
+    caption = data.get("caption", "")
+    hashtags = data.get("hashtags", "")
+    use_ai_spin = data.get("use_ai_spin", False)
+
+    if not video_ids or not page_ids or not start_time:
+        raise HTTPException(400, "video_ids, page_ids, and start_time are required")
+
+    from datetime import datetime, timedelta
+
+    try:
+        base_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+    except ValueError:
+        base_time = datetime.fromisoformat(start_time)
+
+    all_pages = await db.get_all_fb_pages()
+    page_map = {p["id"]: p for p in all_pages}
+
+    created_posts = []
+    slot_index = 0
+
+    for vid_id in video_ids:
+        video = await db.get_video(vid_id)
+        if not video:
+            continue
+
+        for pg_id in page_ids:
+            page = page_map.get(pg_id)
+            if not page:
+                continue
+
+            # Calculate staggered time
+            scheduled_time = base_time + timedelta(minutes=slot_index * interval_minutes)
+
+            # AI Content Spinning: generate unique caption per page
+            post_caption = caption
+            post_hashtags = hashtags
+            if use_ai_spin and caption:
+                try:
+                    spin_result = await _spin_caption_for_page(
+                        caption, page.get("page_name", ""),
+                        video.get("title", ""), video.get("description", "")
+                    )
+                    if "caption" in spin_result:
+                        post_caption = spin_result["caption"]
+                    if "hashtags" in spin_result and spin_result["hashtags"]:
+                        post_hashtags = " ".join(spin_result["hashtags"])
+                except Exception as e:
+                    logger.warning(f"AI spin failed for {pg_id}: {e}")
+
+            result = await post_scheduler.add_scheduled_post(
+                video_id=vid_id,
+                page_id=pg_id,
+                scheduled_time=scheduled_time.isoformat(),
+                caption=post_caption,
+                hashtags=post_hashtags,
+            )
+            created_posts.append({
+                "video_id": vid_id,
+                "page_id": pg_id,
+                "page_name": page.get("page_name", ""),
+                "scheduled_time": scheduled_time.isoformat(),
+                "post_id": result.get("id", ""),
+            })
+            slot_index += 1
+
+    logger.info(f"Mass schedule: created {len(created_posts)} posts from {len(video_ids)} videos x {len(page_ids)} pages")
+
+    return {
+        "success": True,
+        "count": len(created_posts),
+        "posts": created_posts,
+        "message": f"Đã tạo {len(created_posts)} bài đăng lên lịch!"
+    }
+
+
+async def _spin_caption_for_page(base_caption: str, page_name: str,
+                                  video_title: str, video_desc: str) -> dict:
+    """Use AI to spin/personalize a caption for a specific page."""
+    prompt = f"""Bạn là chuyên gia content marketing trên Facebook.
+Viết lại caption dưới đây để tạo một phiên bản HOÀN TOÀN KHÁC về mặt từ ngữ nhưng GIỮ NGUYÊN ý nghĩa.
+Mục tiêu: tránh bị Facebook phát hiện là nội dung spam/trùng lặp khi đăng lên nhiều Page.
+
+Caption gốc: {base_caption}
+Tên Page: {page_name}
+Tiêu đề video: {video_title}
+
+Yêu cầu:
+1. Paraphrase 100% - KHÔNG giữ nguyên bất kỳ câu nào từ gốc
+2. Thêm emoji hợp lý
+3. Có thể mention tên Page "{page_name}" một cách tự nhiên
+4. Tạo 5-8 hashtag mới liên quan
+5. Giọng văn tự nhiên, cuốn hút
+
+Trả về JSON:
+{{"caption": "...", "hashtags": ["#tag1", "#tag2", ...]}}"""
+
+    try:
+        provider = settings.AI_PROVIDER.lower()
+        import asyncio as _asyncio
+
+        if provider == "openai":
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            resp = await client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a content spinning expert. Always respond in valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.95,
+                max_tokens=800,
+            )
+            result_text = resp.choices[0].message.content
+        elif provider == "gemini":
+            import google.generativeai as genai
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            model = genai.GenerativeModel(settings.GEMINI_MODEL)
+            resp = await _asyncio.to_thread(model.generate_content, prompt)
+            result_text = resp.text
+        else:
+            return {"caption": base_caption}
+
+        # Parse JSON from response
+        import re
+        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(0))
+        return {"caption": result_text}
+    except Exception as e:
+        logger.warning(f"Spin caption error: {e}")
+        return {"caption": base_caption}
+
+
+# ═══════════════════════════════════════════
+# API: BULK PROFILE DOWNLOAD (SO9 9Downloader)
+# ═══════════════════════════════════════════
+
+@app.post("/api/profile/list-videos")
+async def api_list_profile_videos(request: Request):
+    """
+    List all videos from a user profile URL (TikTok, Douyin, YouTube).
+    Uses yt-dlp --flat-playlist to enumerate without downloading.
+    """
+    data = await request.json()
+    profile_url = data.get("url", "").strip()
+    limit = int(data.get("limit", 30))
+
+    if not profile_url:
+        raise HTTPException(400, "Profile URL is required")
+
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _list_videos():
+        cmd = [
+            "yt-dlp",
+            "--flat-playlist",
+            "--playlist-end", str(limit),
+            "--print", "%(id)s|||%(title)s|||%(url)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s",
+            "--no-warnings",
+            "--no-check-certificates",
+            profile_url,
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, encoding='utf-8', errors='replace')
+            videos = []
+            for line in result.stdout.strip().split("\n"):
+                if "|||" not in line:
+                    continue
+                parts = line.split("|||")
+                if len(parts) >= 3:
+                    videos.append({
+                        "id": parts[0] if parts[0] != "NA" else "",
+                        "title": parts[1] if len(parts) > 1 and parts[1] != "NA" else "Untitled",
+                        "url": parts[2] if len(parts) > 2 and parts[2] != "NA" else "",
+                        "duration": parts[3] if len(parts) > 3 and parts[3] != "NA" else "0",
+                        "views": parts[4] if len(parts) > 4 and parts[4] != "NA" else "0",
+                        "thumbnail": parts[5] if len(parts) > 5 and parts[5] != "NA" else "",
+                    })
+            return videos
+        except Exception as e:
+            return [{"error": str(e)}]
+
+    import asyncio
+    loop = asyncio.get_event_loop()
+    executor = ThreadPoolExecutor(max_workers=1)
+    videos = await loop.run_in_executor(executor, _list_videos)
+
+    if videos and "error" in videos[0]:
+        raise HTTPException(500, videos[0]["error"])
+
+    logger.info(f"Profile scan: found {len(videos)} videos from {profile_url}")
+    return {"videos": videos, "count": len(videos), "profile_url": profile_url}
+
+
+@app.post("/api/profile/download-selected")
+async def api_download_selected(request: Request):
+    """Download selected videos from a profile listing."""
+    data = await request.json()
+    urls = data.get("urls", [])
+
+    if not urls:
+        raise HTTPException(400, "No URLs provided")
+
+    results = []
+    import asyncio
+    for url in urls:
+        video_id = str(uuid.uuid4())[:8]
+        platform = detect_platform(url)
+        await db.create_video({
+            "id": video_id,
+            "source_url": url,
+            "source_platform": platform,
+            "status": "pending",
+        })
+        asyncio.create_task(_download_task(url, video_id))
+        results.append({"id": video_id, "url": url, "platform": platform, "status": "downloading"})
+
+    return {"count": len(results), "videos": results}
+
+
+# ═══════════════════════════════════════════
+# API: DASHBOARD ANALYTICS (SO9 Style)
+# ═══════════════════════════════════════════
+
+@app.get("/api/dashboard/analytics")
+async def api_dashboard_analytics():
+    """Get enhanced analytics for dashboard charts."""
+    analytics = await db.get_dashboard_analytics()
+    return analytics
+
+
+# ═══════════════════════════════════════════
+# API: AFFILIATE AUTOMATION
+# ═══════════════════════════════════════════
+
+@app.get("/api/affiliate/platforms")
+async def api_affiliate_platforms():
+    """List supported affiliate platforms."""
+    from app.services.affiliate_service import get_affiliate_platforms
+    return {"platforms": get_affiliate_platforms()}
+
+
+@app.post("/api/affiliate/generate-caption")
+async def api_affiliate_caption(request: Request):
+    """Generate AI-powered affiliate caption with product link."""
+    data = await request.json()
+    
+    from app.services.affiliate_service import generate_affiliate_caption
+    
+    result = await generate_affiliate_caption(
+        video_title=data.get("video_title", ""),
+        video_description=data.get("video_description", ""),
+        product_keywords=data.get("product_keywords", ""),
+        affiliate_link=data.get("affiliate_link", ""),
+        style=data.get("style", "soft_sell"),
+        language=data.get("language", "vi"),
+    )
+
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+
+    return result
+
+
+# ═══════════════════════════════════════════
+# API: AUTO SEEDING (Like/Comment/Share)
+# ═══════════════════════════════════════════
+
+@app.get("/api/seeding/accounts")
+async def api_seeding_accounts():
+    """List all seeding accounts."""
+    adb = await db.get_db()
+    try:
+        cursor = await adb.execute("SELECT * FROM seeding_accounts ORDER BY created_at DESC")
+        rows = await cursor.fetchall()
+        accounts = []
+        for r in rows:
+            d = dict(r)
+            d.pop("access_token", None)  # Don't expose token to frontend
+            accounts.append(d)
+        return {"accounts": accounts}
+    finally:
+        await adb.close()
+
+
+@app.post("/api/seeding/accounts")
+async def api_add_seeding_account(request: Request):
+    """Add a new seeding account (clone/via)."""
+    data = await request.json()
+    token = data.get("access_token", "").strip()
+    name = data.get("name", "").strip()
+    account_type = data.get("account_type", "clone")
+    daily_limit = int(data.get("daily_limit", 50))
+
+    if not token:
+        raise HTTPException(400, "Access token is required")
+
+    # Verify token by getting user info
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://graph.facebook.com/v19.0/me",
+                params={"access_token": token, "fields": "id,name"}
+            )
+            user_data = resp.json()
+            if "error" in user_data:
+                raise HTTPException(400, f"Token không hợp lệ: {user_data['error']['message']}")
+            
+            fb_user_id = user_data.get("id", "")
+            if not name:
+                name = user_data.get("name", f"Via-{fb_user_id[:6]}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Lỗi xác thực token: {str(e)}")
+
+    import uuid
+    account_id = str(uuid.uuid4())[:8]
+    now = datetime.utcnow().isoformat()
+
+    adb = await db.get_db()
+    try:
+        await adb.execute("""
+            INSERT INTO seeding_accounts (id, name, fb_user_id, access_token, account_type, daily_limit, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (account_id, name, fb_user_id, token, account_type, daily_limit, now))
+        await adb.commit()
+        return {"message": f"Đã thêm tài khoản: {name}", "id": account_id, "name": name, "fb_user_id": fb_user_id}
+    finally:
+        await adb.close()
+
+
+@app.delete("/api/seeding/accounts/{account_id}")
+async def api_delete_seeding_account(account_id: str):
+    """Delete a seeding account."""
+    adb = await db.get_db()
+    try:
+        await adb.execute("DELETE FROM seeding_accounts WHERE id = ?", (account_id,))
+        await adb.execute("DELETE FROM seeding_tasks WHERE account_id = ?", (account_id,))
+        await adb.commit()
+        return {"message": "Đã xóa tài khoản"}
+    finally:
+        await adb.close()
+
+
+@app.post("/api/seeding/create-plan")
+async def api_create_seeding_plan(request: Request):
+    """Create a seeding plan for a published post."""
+    data = await request.json()
+    fb_post_id = data.get("fb_post_id", "").strip()
+    page_name = data.get("page_name", "")
+    actions = data.get("actions", {"like": True, "comment": True, "share": False})
+    delay_min = int(data.get("delay_min", 30))
+    delay_max = int(data.get("delay_max", 180))
+    custom_comments = data.get("custom_comments", [])
+
+    if not fb_post_id:
+        raise HTTPException(400, "fb_post_id is required")
+
+    # Get active seeding accounts
+    adb = await db.get_db()
+    try:
+        cursor = await adb.execute(
+            "SELECT * FROM seeding_accounts WHERE status = 'active'"
+        )
+        accounts = [dict(r) for r in await cursor.fetchall()]
+
+        if not accounts:
+            raise HTTPException(400, "Chưa có tài khoản seeding nào. Hãy thêm Via/Clone trước.")
+
+        # Create plan
+        from app.services.seeding_service import create_seeding_plan
+        tasks = await create_seeding_plan(
+            fb_post_id=fb_post_id,
+            page_name=page_name,
+            accounts=accounts,
+            actions=actions,
+            delay_range=(delay_min, delay_max),
+        )
+
+        # Override comments if custom ones provided
+        if custom_comments:
+            comment_tasks = [t for t in tasks if t["action_type"] == "comment"]
+            for i, task in enumerate(comment_tasks):
+                task["comment_text"] = custom_comments[i % len(custom_comments)]
+
+        # Save tasks to DB
+        for task in tasks:
+            await adb.execute("""
+                INSERT INTO seeding_tasks (id, fb_post_id, page_name, account_id, action_type, comment_text, status, scheduled_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (task["id"], task["fb_post_id"], task["page_name"], task["account_id"],
+                  task["action_type"], task["comment_text"], task["status"], task["scheduled_at"], task["created_at"]))
+        
+        await adb.commit()
+
+        return {
+            "message": f"Đã tạo {len(tasks)} tác vụ seeding cho bài {fb_post_id}",
+            "total_tasks": len(tasks),
+            "tasks": [{
+                "id": t["id"],
+                "action": t["action_type"],
+                "account": t.get("account_name", t["account_id"]),
+                "scheduled": t["scheduled_at"],
+                "comment": t.get("comment_text", "")[:30],
+            } for t in tasks],
+        }
+    finally:
+        await adb.close()
+
+
+@app.get("/api/seeding/tasks")
+async def api_seeding_tasks(limit: int = 50):
+    """Get recent seeding tasks."""
+    adb = await db.get_db()
+    try:
+        cursor = await adb.execute("""
+            SELECT st.*, sa.name as account_name
+            FROM seeding_tasks st
+            LEFT JOIN seeding_accounts sa ON st.account_id = sa.id
+            ORDER BY st.created_at DESC
+            LIMIT ?
+        """, (limit,))
+        rows = await cursor.fetchall()
+        return {"tasks": [dict(r) for r in rows]}
+    finally:
+        await adb.close()
+
+
+@app.get("/api/seeding/stats")
+async def api_seeding_stats():
+    """Get seeding statistics."""
+    adb = await db.get_db()
+    try:
+        stats = {}
+        
+        # Account count
+        cursor = await adb.execute("SELECT COUNT(*) as cnt FROM seeding_accounts WHERE status = 'active'")
+        row = await cursor.fetchone()
+        stats["active_accounts"] = dict(row)["cnt"]
+        
+        # Task stats
+        cursor = await adb.execute("""
+            SELECT status, COUNT(*) as cnt FROM seeding_tasks GROUP BY status
+        """)
+        rows = await cursor.fetchall()
+        stats["tasks_by_status"] = {dict(r)["status"]: dict(r)["cnt"] for r in rows}
+        
+        # Today's actions
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        cursor = await adb.execute("""
+            SELECT COUNT(*) as cnt FROM seeding_tasks 
+            WHERE status = 'completed' AND executed_at LIKE ?
+        """, (f"{today}%",))
+        row = await cursor.fetchone()
+        stats["actions_today"] = dict(row)["cnt"]
+        
+        # Total completed
+        cursor = await adb.execute("SELECT COUNT(*) as cnt FROM seeding_tasks WHERE status = 'completed'")
+        row = await cursor.fetchone()
+        stats["total_completed"] = dict(row)["cnt"]
+        
+        # Pending
+        cursor = await adb.execute("SELECT COUNT(*) as cnt FROM seeding_tasks WHERE status = 'pending'")
+        row = await cursor.fetchone()
+        stats["total_pending"] = dict(row)["cnt"]
+        
+        return stats
+    finally:
+        await adb.close()
+
+
+@app.get("/api/seeding/comments")
+async def api_seeding_comment_templates():
+    """Get available comment templates."""
+    from app.services.seeding_service import SEEDING_COMMENTS
+    return {"comments": SEEDING_COMMENTS}
+
+
+@app.post("/api/seeding/reset-daily")
+async def api_reset_daily_limits():
+    """Reset daily action counters for all seeding accounts."""
+    adb = await db.get_db()
+    try:
+        await adb.execute("UPDATE seeding_accounts SET actions_today = 0")
+        await adb.commit()
+        return {"message": "Đã reset giới hạn hàng ngày cho tất cả tài khoản"}
+    finally:
+        await adb.close()

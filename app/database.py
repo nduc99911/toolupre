@@ -64,6 +64,36 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS seeding_accounts (
+    id TEXT PRIMARY KEY,
+    name TEXT DEFAULT '',
+    fb_user_id TEXT DEFAULT '',
+    access_token TEXT NOT NULL,
+    account_type TEXT DEFAULT 'clone',
+    status TEXT DEFAULT 'active',
+    daily_limit INTEGER DEFAULT 50,
+    actions_today INTEGER DEFAULT 0,
+    last_action_at TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS seeding_tasks (
+    id TEXT PRIMARY KEY,
+    post_id TEXT DEFAULT '',
+    fb_post_id TEXT DEFAULT '',
+    page_name TEXT DEFAULT '',
+    account_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    comment_text TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    scheduled_at TEXT DEFAULT '',
+    executed_at TEXT DEFAULT '',
+    error_message TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES seeding_accounts(id)
+);
 """
 
 
@@ -351,3 +381,84 @@ async def get_stats() -> dict:
         return stats
     finally:
         await db.close()
+
+
+async def get_dashboard_analytics() -> dict:
+    """Get detailed analytics for dashboard charts (SO9-style)."""
+    db = await get_db()
+    try:
+        analytics = {}
+
+        # Videos by date (last 7 days)
+        cursor = await db.execute("""
+            SELECT DATE(created_at) as date, COUNT(*) as count, status 
+            FROM videos 
+            WHERE created_at >= DATE('now', '-7 days')
+            GROUP BY DATE(created_at), status
+            ORDER BY date
+        """)
+        rows = await cursor.fetchall()
+        daily = {}
+        for row in rows:
+            d = dict(row)
+            date = d["date"]
+            if date not in daily:
+                daily[date] = {"date": date, "downloaded": 0, "processed": 0, "published": 0, "failed": 0}
+            status = d.get("status", "")
+            if status in daily[date]:
+                daily[date][status] = d["count"]
+        analytics["daily_stats"] = list(daily.values())
+
+        # Videos by platform
+        cursor = await db.execute("""
+            SELECT source_platform, COUNT(*) as count 
+            FROM videos 
+            GROUP BY source_platform
+        """)
+        rows = await cursor.fetchall()
+        analytics["by_platform"] = [dict(r) for r in rows]
+
+        # Videos by status
+        cursor = await db.execute("""
+            SELECT status, COUNT(*) as count 
+            FROM videos 
+            GROUP BY status
+        """)
+        rows = await cursor.fetchall()
+        analytics["by_status"] = [dict(r) for r in rows]
+
+        # Pages with post counts
+        cursor = await db.execute("""
+            SELECT fp.page_name, fp.page_id, COUNT(sp.id) as post_count,
+                   SUM(CASE WHEN sp.status = 'published' THEN 1 ELSE 0 END) as published_count,
+                   SUM(CASE WHEN sp.status = 'pending' THEN 1 ELSE 0 END) as pending_count
+            FROM fb_pages fp
+            LEFT JOIN scheduled_posts sp ON fp.id = sp.page_id
+            WHERE fp.is_active = 1
+            GROUP BY fp.id
+            ORDER BY post_count DESC
+        """)
+        rows = await cursor.fetchall()
+        analytics["page_stats"] = [dict(r) for r in rows]
+
+        # Recent activity (last 20 actions)
+        cursor = await db.execute("""
+            SELECT id, title, status, source_platform, updated_at 
+            FROM videos 
+            ORDER BY updated_at DESC 
+            LIMIT 20
+        """)
+        rows = await cursor.fetchall()
+        analytics["recent_activity"] = [dict(r) for r in rows]
+
+        # Total storage used
+        cursor = await db.execute("""
+            SELECT SUM(file_size) as total_size FROM videos
+        """)
+        row = await cursor.fetchone()
+        analytics["total_storage"] = dict(row)["total_size"] or 0
+
+        return analytics
+    finally:
+        await db.close()
+

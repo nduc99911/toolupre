@@ -207,6 +207,36 @@ class VideoProcessor:
             "description": "Loại bỏ audio gốc (dùng khi muốn thay bằng AI voice)",
             "default": False
         },
+        # ─── Deep Anti-Copyright (Advanced) ───
+        "ghost_overlay": {
+            "name": "👻 Ghost Overlay (1-2% layer ẩn)",
+            "description": "Chèn layer mờ 1-2% không nhìn thấy, thay đổi mã hash hoàn toàn",
+            "default": False,
+            "value": 0.015
+        },
+        "deep_noise": {
+            "name": "🔬 Deep Noise (Hash Breaker)",
+            "description": "Thêm noise cực nhỏ không nhìn thấy (mắt không phân biệt được)",
+            "default": False,
+            "value": 1
+        },
+        "pixel_shift": {
+            "name": "🔄 Pixel Shift (Sub-pixel)",
+            "description": "Dịch chuyển pixel ở mức sub-pixel, phá vỡ fingerprint",
+            "default": False,
+            "value": 1
+        },
+        "color_channel_shift": {
+            "name": "🎨 Color Channel Shift",
+            "description": "Dịch kênh màu RGB nhẹ (không ảnh hưởng visual nhưng đổi hash)",
+            "default": False,
+            "value": 2
+        },
+        "random_metadata": {
+            "name": "🎲 Random Metadata",
+            "description": "Ghi đè metadata giả ngẫu nhiên (device, date, GPS...)",
+            "default": True
+        },
     }
 
     @staticmethod
@@ -302,6 +332,42 @@ class VideoProcessor:
             pitch = float(options.get("pitch_value", 1.02))
             audio_filters.append(f"asetrate=44100*{pitch},aresample=44100")
 
+        # ─── Deep Anti-Copyright Filters ───
+
+        # Ghost Overlay: blend a colored layer at very low opacity
+        # This changes every single frame's pixel data without visible effect
+        if options.get("ghost_overlay", False):
+            opacity = float(options.get("ghost_overlay_value", 0.015))
+            # Create a semi-transparent colored noise overlay
+            # geq filter: add tiny random-like variation to each channel
+            video_filters.append(
+                f"geq=r='clip(r(X,Y)+{int(opacity*255)}, 0, 255)':"
+                f"g='clip(g(X,Y)-{int(opacity*128)}, 0, 255)':"
+                f"b='clip(b(X,Y)+{int(opacity*64)}, 0, 255)'"
+            )
+
+        # Deep Noise: extremely subtle noise that's imperceptible
+        # but completely changes the binary hash of every frame
+        if options.get("deep_noise", False):
+            noise_level = int(options.get("deep_noise_value", 1))
+            # Use temporal + uniform noise at very low level
+            video_filters.append(f"noise=c0s={noise_level}:c0f=t+u:c1s={noise_level}:c1f=t+u:c2s={noise_level}:c2f=t+u")
+
+        # Pixel Shift: apply sub-pixel displacement
+        # Moves image by fractional pixels - machine detectable change, human invisible
+        if options.get("pixel_shift", False):
+            shift = int(options.get("pixel_shift_value", 1))
+            # Pad then crop to shift content by N pixels
+            video_filters.append(f"pad=iw+{shift}:ih+{shift}:{shift}:{shift}:black")
+            video_filters.append(f"crop=iw-{shift}:ih-{shift}:0:0")
+
+        # Color Channel Shift: slightly offset RGB channels
+        if options.get("color_channel_shift", False):
+            shift_val = int(options.get("color_channel_shift_value", 2))
+            video_filters.append(
+                f"geq=r='r(X,Y)':g='g(X+{shift_val},Y)':b='b(X,Y+{shift_val})'"
+            )
+
         return video_filters, audio_filters
 
     @staticmethod
@@ -383,6 +449,19 @@ class VideoProcessor:
             # Remove metadata
             if options.get("change_metadata", True):
                 cmd.extend(["-map_metadata", "-1"])
+
+            # Random Metadata: write fake metadata to further disguise origin
+            if options.get("random_metadata", True):
+                import random
+                fake_devices = ["iPhone 15 Pro", "Samsung Galaxy S24", "Xiaomi 14", "OPPO Find X7", "Google Pixel 9", "Huawei P60"]
+                fake_sw = ["CapCut 12.0", "InShot 2.0", "Adobe Premiere 2026", "DaVinci Resolve 20", "VN Video Editor 3.0"]
+                fake_date = f"202{random.randint(3,6)}-{random.randint(1,12):02d}-{random.randint(1,28):02d}T{random.randint(6,22):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}"
+                cmd.extend([
+                    "-metadata", f"creation_time={fake_date}",
+                    "-metadata", f"encoder={random.choice(fake_sw)}",
+                    "-metadata", f"comment=Edited on {random.choice(fake_devices)}",
+                    "-metadata", f"artist=User{random.randint(1000,9999)}",
+                ])
 
             # Output
             cmd.append(output_path)
