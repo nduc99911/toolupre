@@ -167,18 +167,27 @@ async def get_video_info(url: str) -> dict:
 async def _download_tikwm(url: str, video_id: str) -> dict:
     """Download TikTok video using TikWM API (handles e-commerce product links)."""
     import httpx
-    
-    logger.info(f"[{video_id}] Attempting to download via TikWM API...")
+    # Clean TikTok URL
+    if "tiktok.com" in url:
+        url = url.split("?")[0]
+        
+    logger.info(f"[{video_id}] Attempting to download via TikWM API (Clean URL: {url})...")
     output_dir = settings.DOWNLOAD_DIR
     os.makedirs(output_dir, exist_ok=True)
     
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.tikwm.com/"
+    }
+    
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, headers=headers) as client:
             resp = await client.post("https://www.tikwm.com/api/", data={"url": url})
             data = resp.json()
             
             if data.get("code") != 0 or not data.get("data"):
-                return {"error": "TikWM API returned error"}
+                logger.warning(f"[{video_id}] TikWM API error: {data.get('msg', 'Unknown')}")
+                return {"error": f"TikWM API error: {data.get('msg', 'Unknown')}"}
                 
             video_data = data["data"]
             play_url = video_data.get("play")
@@ -466,12 +475,14 @@ async def download_video(url: str, video_id: str = None,
     # ----------------------------------------------------
     # FALLBACK FOR TIKTOK Affiliate Videos
     # ----------------------------------------------------
+    # Ensure clean URL for TikTok
     if platform == "tiktok":
-        tikwm_result = await _download_tikwm(url, video_id)
+        clean_url = url.split("?")[0]
+        tikwm_result = await _download_tikwm(clean_url, video_id)
         if tikwm_result and "error" not in tikwm_result:
             return tikwm_result
         else:
-            logger.warning(f"[{video_id}] TikWM fallback failed, trying yt-dlp... Error: {tikwm_result.get('error', '')}")
+            logger.warning(f"[{video_id}] TikWM fallback failed for TikTok Shop, trying yt-dlp... Error: {tikwm_result.get('error', '')}")
 
     # Step 1: Get video info first (title, description, slideshow detection)
     title = ""
