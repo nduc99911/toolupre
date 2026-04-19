@@ -70,6 +70,7 @@ function navigateTo(page) {
         schedule: 'Lịch đăng bài',
         affiliate: 'Affiliate Marketing',
         seeding: 'Auto Seeding (Like/Comment/Share)',
+        analytics: 'Thống kê Pages (SO9 Style)',
         pages: 'Facebook Pages',
         settings: 'Cài đặt',
         logs: 'System Logs',
@@ -90,6 +91,7 @@ function navigateTo(page) {
         case 'profile-scan': break;
         case 'affiliate': loadAffiliateData(); break;
         case 'seeding': loadSeedingPage(); break;
+        case 'analytics': loadAnalyticsPage(); break;
     }
 
     // Close mobile sidebar
@@ -204,7 +206,7 @@ async function loadUpcomingPosts() {
             html += `<div class="schedule-item">
                 <div class="schedule-time">
                     <div class="date">${dt.toLocaleDateString('vi-VN')}</div>
-                    <div class="time">${dt.toLocaleTimeString('vi-VN', {hour:'2-digit',minute:'2-digit'})}</div>
+                    <div class="time">${dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
                 <div class="schedule-info">
                     <div class="sched-title">${escapeHtml(p.video_title || 'Video')}</div>
@@ -272,11 +274,14 @@ async function downloadSingle() {
         // Show progress
         const statusEl = document.getElementById('download-status');
         statusEl.innerHTML = `
-            <div style="display:flex;align-items:center;gap:10px;">
-                <span class="badge badge-downloading">⏳ Downloading</span>
-                <span style="font-size:12px;color:var(--text-tertiary);">ID: ${result.id}</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="badge badge-downloading">⏳ Downloading</span>
+                    <span style="font-size:12px;color:var(--text-tertiary);">ID: ${result.id}</span>
+                </div>
+                <div id="progress-text-${result.id}" style="font-size:13px;font-weight:700;color:var(--accent-primary);">0%</div>
             </div>
-            <div class="progress-bar"><div class="progress-fill" id="progress-${result.id}" style="width:0%"></div></div>
+            <div class="progress-bar" style="height:8px;"><div class="progress-fill" id="progress-${result.id}" style="width:0%"></div></div>
         `;
 
         // Poll for status
@@ -354,24 +359,45 @@ function startPolling(videoId) {
         try {
             const status = await api(`/api/videos/${videoId}/status`);
             const progressEl = document.getElementById(`progress-${videoId}`);
+            const textEl = document.getElementById(`progress-text-${videoId}`);
 
             if (progressEl && status.progress !== undefined) {
-                progressEl.style.width = `${Math.min(100, Math.max(0, status.progress))}%`;
+                const p = Math.min(100, Math.max(0, status.progress));
+                progressEl.style.width = `${p}%`;
+                if (textEl) textEl.textContent = `${p.toFixed(1)}%`;
             }
 
             if (status.status === 'downloaded') {
                 if (progressEl) progressEl.style.width = '100%';
+                if (textEl) textEl.textContent = '100% ✅';
+
+                const badgeEl = document.getElementById(`badge-status-${videoId}`);
+                if (badgeEl) {
+                    badgeEl.className = 'badge badge-downloaded';
+                    badgeEl.innerHTML = '✅ Downloaded';
+                }
+
                 showToast(`Video ${videoId} đã tải xong! ✅`, 'success');
                 clearInterval(state.pollIntervals[videoId]);
                 delete state.pollIntervals[videoId];
                 loadStats();
             } else if (status.status === 'processed') {
                 if (progressEl) progressEl.style.width = '100%';
+                if (textEl) textEl.textContent = '100% ⚡';
+
+                const badgeEl = document.getElementById(`badge-status-${videoId}`);
+                if (badgeEl) {
+                    badgeEl.className = 'badge badge-processed';
+                    badgeEl.innerHTML = '⚡ Processed';
+                }
+
                 showToast(`Video ${videoId} đã xử lý xong! ⚡`, 'success');
                 clearInterval(state.pollIntervals[videoId]);
                 delete state.pollIntervals[videoId];
                 loadStats();
             } else if (status.status === 'failed') {
+                if (textEl) textEl.textContent = '❌ Lỗi';
+                if (progressEl) progressEl.style.background = 'var(--accent-danger)';
                 showToast(`Video ${videoId} lỗi: ${status.error_message}`, 'error');
                 clearInterval(state.pollIntervals[videoId]);
                 delete state.pollIntervals[videoId];
@@ -379,14 +405,14 @@ function startPolling(videoId) {
         } catch (err) {
             // ignore
         }
-    }, 2000);
+    }, 1500);
 }
 
 async function refreshVideoStatuses() {
     // Only refresh on library page
     if (state.currentPage !== 'library') return;
     // Reload if we have any downloading/processing videos
-    const hasActive = state.videos.some(v => 
+    const hasActive = state.videos.some(v =>
         v.status === 'downloading' || v.status === 'processing'
     );
     if (hasActive) {
@@ -399,8 +425,8 @@ async function refreshVideoStatuses() {
 // ═══════════════════════════════════════════
 async function loadVideos(statusFilter) {
     try {
-        const url = statusFilter && statusFilter !== 'all' 
-            ? `/api/videos?status=${statusFilter}` 
+        const url = statusFilter && statusFilter !== 'all'
+            ? `/api/videos?status=${statusFilter}`
             : '/api/videos';
         const data = await api(url);
         state.videos = data.videos || [];
@@ -442,9 +468,9 @@ function renderVideoGrid(videos) {
         html += `
         <div class="video-card" data-id="${v.id}">
             <div class="video-thumb" onclick="openVideoModal('${v.id}')">
-                ${thumbUrl 
-                    ? `<img src="${thumbUrl}" alt="thumb" loading="lazy">` 
-                    : `<span style="font-size:48px;opacity:0.3;">🎬</span>`}
+                ${thumbUrl
+                ? `<img src="${thumbUrl}" alt="thumb" loading="lazy">`
+                : `<span style="font-size:48px;opacity:0.3;">🎬</span>`}
                 <div class="play-overlay">
                     <span style="font-size:32px;">▶️</span>
                 </div>
@@ -565,7 +591,7 @@ async function loadVideoSelects() {
         const data = await api('/api/videos');
         const select = document.getElementById('process-video-select');
         select.innerHTML = '<option value="">-- Chọn video --</option>';
-        
+
         (data.videos || []).forEach(v => {
             if (v.status === 'downloaded' || v.status === 'processed' || v.status === 'failed') {
                 const title = v.title || v.original_filename || v.id;
@@ -608,11 +634,14 @@ async function processVideo() {
         // Show status
         const statusEl = document.getElementById('process-status');
         statusEl.innerHTML = `
-            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
-                <span class="badge badge-processing">⏳ Processing</span>
-                <span style="font-size:12px;color:var(--text-tertiary);">ID: ${videoId}</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span id="badge-status-${videoId}" class="badge badge-processing">⏳ Processing</span>
+                    <span style="font-size:12px;color:var(--text-tertiary);">ID: ${videoId}</span>
+                </div>
+                <div id="progress-text-${videoId}" style="font-size:13px;font-weight:700;color:var(--accent-primary);">0%</div>
             </div>
-            <div class="progress-bar"><div class="progress-fill" id="progress-${videoId}" style="width:10%"></div></div>
+            <div class="progress-bar" style="height:8px;"><div class="progress-fill" id="progress-${videoId}" style="width:0%"></div></div>
         `;
     } catch (err) {
         showToast(`Lỗi: ${err.message}`, 'error');
@@ -717,7 +746,7 @@ function renderAIResult(result) {
         html += `
         <div>
             <div class="form-label">Hook gợi ý</div>
-            ${hooks.map((h, i) => `<div style="padding:6px 0;font-size:12px;color:var(--text-secondary);">${i+1}. ${escapeHtml(h)}</div>`).join('')}
+            ${hooks.map((h, i) => `<div style="padding:6px 0;font-size:12px;color:var(--text-secondary);">${i + 1}. ${escapeHtml(h)}</div>`).join('')}
         </div>`;
     }
 
@@ -964,8 +993,8 @@ function renderScheduleList(posts) {
         html += `
         <div class="schedule-item">
             <div class="schedule-time">
-                <div class="date">${dt.toLocaleDateString('vi-VN', {day:'2-digit',month:'2-digit',year:'numeric'})}</div>
-                <div class="time">${dt.toLocaleTimeString('vi-VN', {hour:'2-digit',minute:'2-digit'})}</div>
+                <div class="date">${dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+                <div class="time">${dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
             <div class="schedule-info">
                 <div class="sched-title">${escapeHtml(p.video_title || 'Video')}</div>
@@ -1025,10 +1054,29 @@ function renderFBPages(pages) {
                 <div class="page-card-name">${escapeHtml(p.page_name)}</div>
                 <div class="page-card-cat">${escapeHtml(p.category || 'Page')} • ID: ${p.page_id}</div>
             </div>
-            <button class="btn btn-ghost btn-sm" onclick="deleteFBPage('${p.id}')" style="color:var(--accent-danger);">🗑️</button>
+            <div style="display:flex; gap:4px;">
+                <button class="btn btn-ghost btn-sm" onclick="editFBPageToken('${p.id}', '${escapeHtml(p.page_name).replace(/'/g, "\\'")}')" title="Sửa Token">✏️ Sửa Token</button>
+                <button class="btn btn-ghost btn-sm" onclick="deleteFBPage('${p.id}')" style="color:var(--accent-danger);" title="Xóa">🗑️</button>
+            </div>
         </div>`;
     });
     container.innerHTML = html;
+}
+
+function editFBPageToken(pageDbId, pageName) {
+    const newToken = prompt(`Nhập Page Access Token mới cho "${pageName}":`);
+    if (!newToken) return;
+
+    api(`/api/fb/pages/${pageDbId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ access_token: newToken.trim() })
+    }).then(result => {
+        showToast(result.message || 'Đã cập nhật token', 'success');
+        loadFBPages();
+        loadStats();
+    }).catch(err => {
+        showToast(`Lỗi: ${err.message}`, 'error');
+    });
 }
 
 async function addFBPage() {
@@ -1095,13 +1143,13 @@ async function loginFacebook() {
 
     try {
         const data = await api('/api/fb/login-url');
-        
+
         // Open Facebook OAuth in a popup window
         const width = 650;
         const height = 700;
         const left = (screen.width - width) / 2;
         const top = (screen.height - height) / 2;
-        
+
         const popup = window.open(
             data.url,
             'fb_login',
@@ -1120,20 +1168,20 @@ async function loginFacebook() {
 }
 
 // Listen for OAuth callback messages from the popup window
-window.addEventListener('message', function(event) {
+window.addEventListener('message', function (event) {
     if (!event.data || !event.data.type) return;
 
     if (event.data.type === 'fb_auth_success') {
         const { user, count, pages } = event.data;
-        
+
         showToast(`🎉 Đăng nhập thành công! Đã import ${count} Pages từ ${user}`, 'success');
-        
+
         // Update login status UI
         document.getElementById('fb-login-user').textContent = `✅ Đã đăng nhập: ${user}`;
         document.getElementById('fb-login-detail').textContent = `${count} Pages đã được import`;
         document.getElementById('btn-fb-login').innerHTML = '✅ Đã đăng nhập';
         document.getElementById('btn-fb-login').style.background = 'var(--accent-success)';
-        
+
         // Reload pages list
         loadFBPages();
         loadStats();
@@ -1151,7 +1199,7 @@ async function loadSettings() {
     try {
         const data = await api('/api/settings');
         document.getElementById('setting-ai-provider').textContent = (data.ai_provider || '').toUpperCase();
-        
+
         const openaiEl = document.getElementById('setting-openai');
         openaiEl.textContent = data.has_openai_key ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình';
         openaiEl.className = `badge ${data.has_openai_key ? 'badge-processed' : 'badge-pending'}`;
@@ -1167,6 +1215,12 @@ async function loadSettings() {
         document.getElementById('setting-ffmpeg').textContent = data.ffmpeg_path || 'system PATH';
         document.getElementById('setting-download-dir').textContent = data.download_dir || '--';
         document.getElementById('setting-processed-dir').textContent = data.processed_dir || '--';
+
+        const cleanupEl = document.getElementById('setting-cleanup');
+        if (cleanupEl) {
+            cleanupEl.textContent = data.auto_cleanup ? '✅ Bật' : '❌ Tắt';
+            cleanupEl.className = `badge ${data.auto_cleanup ? 'badge-processed' : 'badge-failed'}`;
+        }
     } catch (err) {
         console.error('Failed to load settings:', err);
     }
@@ -1301,7 +1355,7 @@ function openVideoModal(videoId) {
     const player = document.getElementById('video-modal-player');
     const pathType = video.processed_path ? 'processed' : 'original';
     player.src = `/api/file/${videoId}/${pathType}`;
-    
+
     document.getElementById('video-modal-overlay').classList.add('active');
     setTimeout(() => { player.play().catch(e => console.log('Auto-play blocked:', e)); }, 100);
 }
@@ -1320,7 +1374,7 @@ let currentLogLevel = 'all';
 
 async function loadLogs() {
     if (state.currentPage !== 'logs') return;
-    
+
     try {
         const data = await api('/api/logs?count=300');
         renderLogs(data.logs || []);
@@ -1734,7 +1788,7 @@ async function loadAffiliateData() {
         const data = await api('/api/videos?limit=100');
         const videos = (data.videos || []).filter(v => ['downloaded', 'processed'].includes(v.status));
         const select = document.getElementById('aff-video-select');
-        
+
         select.innerHTML = '<option value="">-- Chọn video --</option>';
         videos.forEach(v => {
             affVideoData[v.id] = v;
@@ -1798,7 +1852,7 @@ async function generateAffiliateCaption() {
         document.getElementById('aff-result-comment').value = result.first_comment || '';
         document.getElementById('aff-result-hashtags').textContent = (result.hashtags || []).join(' ');
         document.getElementById('aff-result-cta').textContent = result.cta_text || '';
-        
+
         document.getElementById('aff-status').innerHTML = '<div class="badge badge-success">✅ Đã tạo caption thành công!</div>';
         showToast('🎉 Caption affiliate đã sẵn sàng!', 'success');
     } catch (err) {
@@ -2050,3 +2104,114 @@ async function loadSeedingTasks() {
         console.error('Load seeding tasks error:', err);
     }
 }
+
+// ═══════════════════════════════════════════
+// PAGE ANALYTICS (SO9 Style)
+// ═══════════════════════════════════════════
+let anaChartEngagement = null;
+let anaChartFans = null;
+
+async function loadAnalyticsPage() {
+    try {
+        const tableBody = document.getElementById('analytics-table-body');
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px; color: var(--text-tertiary);"><div class="spinner" style="margin-bottom: 10px;"></div><br>Đang lấy dữ liệu trực tiếp từ Facebook Graph API cho tất cả các Page...<br>Việc này có thể mất vài giây.</td></tr>';
+
+        const data = await api('/api/fb/analytics');
+        const pages = data.pages || [];
+
+        if (pages.length === 0) {
+            document.getElementById('analytics-table-body').innerHTML = '<tr><td colspan="6" style="text-align:center;">Chưa có dữ liệu. Hãy thêm Page và thử lại.</td></tr>';
+            return;
+        }
+
+        // Sort by engagement
+        pages.sort((a, b) => b.total_engagement - a.total_engagement);
+
+        // Update Hero Stats
+        document.getElementById('ana-total-fans').textContent = pages.reduce((sum, p) => sum + (p.fan_count || 0), 0).toLocaleString();
+        document.getElementById('ana-total-engagement').textContent = pages.reduce((sum, p) => sum + (p.total_engagement || 0), 0).toLocaleString();
+        document.getElementById('ana-avg-engagement').textContent = (pages.reduce((sum, p) => sum + (p.avg_engagement || 0), 0) / pages.length).toFixed(1);
+        document.getElementById('ana-total-posts').textContent = pages.reduce((sum, p) => sum + (p.post_count || 0), 0);
+
+        // Render Table
+        tableBody.innerHTML = pages.map((p, i) => `
+            <tr>
+                <td><span class="rank-badge rank-${i + 1}">${i + 1}</span></td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="width:30px;height:30px;background:linear-gradient(135deg,#1877F2,#42b72a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;">📘</div>
+                        <strong>${escapeHtml(p.name)}</strong>
+                    </div>
+                </td>
+                <td style="font-weight:600;color:var(--accent-primary);">${(p.fan_count || 0).toLocaleString()}</td>
+                <td style="color:var(--accent-success);">${(p.total_engagement || 0).toLocaleString()}</td>
+                <td><span class="badge badge-processed">${p.avg_engagement || 0}</span></td>
+                <td>
+                    <button class="btn btn-ghost btn-sm" onclick="navigateTo('publish'); setTimeout(()=> {document.getElementById('publish-video-select').focus();}, 500)">📤 Đăng bài</button>
+                </td>
+            </tr>
+        `).join('');
+
+        // Render Charts
+        renderAnalyticsCharts(pages);
+
+    } catch (err) {
+        showToast(`Lỗi tải thống kê: ${err.message}`, 'error');
+    }
+}
+
+function renderAnalyticsCharts(pages) {
+    // Engagement Chart
+    const ctxEng = document.getElementById('chart-ana-engagement');
+    if (anaChartEngagement) anaChartEngagement.destroy();
+
+    anaChartEngagement = new Chart(ctxEng, {
+        type: 'bar',
+        data: {
+            labels: pages.map(p => p.name.substring(0, 15)),
+            datasets: [{
+                label: 'Tổng tương tác',
+                data: pages.map(p => p.total_engagement),
+                backgroundColor: 'rgba(108, 92, 231, 0.7)',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888a8' } },
+                y: { grid: { display: false }, ticks: { color: '#8888a8' } }
+            }
+        }
+    });
+
+    // Followers Chart
+    const ctxFans = document.getElementById('chart-ana-fans');
+    if (anaChartFans) anaChartFans.destroy();
+
+    anaChartFans = new Chart(ctxFans, {
+        type: 'pie',
+        data: {
+            labels: pages.slice(0, 5).map(p => p.name),
+            datasets: [{
+                data: pages.slice(0, 5).map(p => p.fan_count),
+                backgroundColor: ['#0984e3', '#00b894', '#6c5ce7', '#fdcb6e', '#d63031'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#8888a8', padding: 20, font: { size: 11 } }
+                }
+            }
+        }
+    });
+}
+

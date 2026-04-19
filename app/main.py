@@ -505,6 +505,88 @@ async def api_delete_fb_page(page_db_id: str):
     return {"success": True}
 
 
+@app.put("/api/fb/pages/{page_db_id}")
+async def api_update_fb_page(page_db_id: str, request: Request):
+    """Update a Facebook page's token."""
+    data = await request.json()
+    access_token = data.get("access_token", "").strip()
+
+    if not access_token:
+        raise HTTPException(400, "Access token is required")
+
+    page_info = await FacebookAPI.verify_token(access_token)
+    if "error" in page_info:
+        raise HTTPException(400, f"Token verification failed: {page_info['error']}")
+
+    pages = await db.get_all_fb_pages()
+    page = next((p for p in pages if p["id"] == page_db_id), None)
+    if not page:
+        raise HTTPException(404, "Page not found")
+
+    if page_info["page_id"] != page["page_id"]:
+        raise HTTPException(400, "Token does not match the original Page ID")
+
+    # Save to DB
+    page_data = {
+        "id": page_db_id,
+        "page_id": page_info["page_id"],
+        "page_name": page_info["page_name"],
+        "access_token": access_token,
+        "category": page_info.get("category", page.get("category", "")),
+        "is_active": 1,
+    }
+    await db.create_fb_page(page_data)
+
+    return {
+        "success": True,
+        "page": page_data,
+        "message": f"Token updated for '{page_info['page_name']}'"
+    }
+
+
+@app.get("/api/fb/analytics")
+async def api_fb_analytics():
+    """Fetch real-time stats for all active pages and save to history."""
+    pages = await db.get_all_fb_pages()
+    
+    if not pages:
+        return {"pages": [], "count": 0}
+
+    async def fetch_and_save(page):
+        try:
+            stats = await FacebookAPI.get_page_detailed_stats(page["page_id"], page["access_token"])
+            if "error" not in stats:
+                await db.save_page_stats({
+                    "page_db_id": page["id"],
+                    "fan_count": stats.get("fan_count", 0),
+                    "followers_count": stats.get("followers_count", 0),
+                    "total_engagement": stats.get("total_engagement", 0),
+                    "avg_engagement": stats.get("avg_engagement", 0),
+                    "post_count_recent": stats.get("post_count", 0)
+                })
+                stats["page_db_id"] = page["id"]
+                return stats
+            return None
+        except Exception as e:
+            logger.error(f"Failed to fetch stats for page {page['page_name']}: {e}")
+            return None
+
+    import asyncio
+    tasks = [fetch_and_save(p) for p in pages]
+    task_results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    results = [res for res in task_results if isinstance(res, dict)]
+            
+    return {"pages": results, "count": len(results)}
+
+
+@app.get("/api/fb/pages/{page_db_id}/history")
+async def api_fb_page_history(page_db_id: str, days: int = 30):
+    """Get historical stats for a specific page."""
+    history = await db.get_page_stats_history(page_db_id, days)
+    return {"history": history}
+
+
 # ═══════════════════════════════════════════
 # API: FACEBOOK OAUTH LOGIN
 # ═══════════════════════════════════════════
@@ -845,6 +927,7 @@ async def api_get_settings():
         "ffmpeg_path": settings.FFMPEG_PATH or "system PATH",
         "download_dir": settings.DOWNLOAD_DIR,
         "processed_dir": settings.PROCESSED_DIR,
+        "auto_cleanup": settings.AUTO_CLEANUP_VIDEO
     }
 
 

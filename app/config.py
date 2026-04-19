@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # FFmpeg
     FFMPEG_PATH: str = ""
 
+    # Cleanup
+    AUTO_CLEANUP_VIDEO: bool = False
+
     # Storage paths
     DOWNLOAD_DIR: str = str(BASE_DIR / "storage" / "downloads")
     PROCESSED_DIR: str = str(BASE_DIR / "storage" / "processed")

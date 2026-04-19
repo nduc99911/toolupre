@@ -94,6 +94,18 @@ CREATE TABLE IF NOT EXISTS seeding_tasks (
     created_at TEXT NOT NULL,
     FOREIGN KEY (account_id) REFERENCES seeding_accounts(id)
 );
+
+CREATE TABLE IF NOT EXISTS fb_page_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_db_id TEXT NOT NULL,
+    fan_count INTEGER DEFAULT 0,
+    followers_count INTEGER DEFAULT 0,
+    total_engagement INTEGER DEFAULT 0,
+    avg_engagement REAL DEFAULT 0,
+    post_count_recent INTEGER DEFAULT 0,
+    captured_at TEXT NOT NULL,
+    FOREIGN KEY (page_db_id) REFERENCES fb_pages(id)
+);
 """
 
 
@@ -195,12 +207,28 @@ async def create_fb_page(page_data: dict) -> dict:
     page_data.setdefault("created_at", datetime.utcnow().isoformat())
     db = await get_db()
     try:
-        cols = ", ".join(page_data.keys())
-        placeholders = ", ".join(["?" for _ in page_data])
-        await db.execute(
-            f"INSERT OR REPLACE INTO fb_pages ({cols}) VALUES ({placeholders})",
-            list(page_data.values())
-        )
+        # Check if page_id already exists to preserve its internal `id`
+        cursor = await db.execute("SELECT id FROM fb_pages WHERE page_id = ?", (page_data.get("page_id"),))
+        existing = await cursor.fetchone()
+
+        if existing:
+            # Preserve old `id`
+            old_id = existing[0]
+            page_data["id"] = old_id
+            
+            # Update
+            cols_to_update = [k for k in page_data.keys() if k != "id"]
+            sets = ", ".join([f"{k} = ?" for k in cols_to_update])
+            values = [page_data[k] for k in cols_to_update] + [old_id]
+            
+            await db.execute(f"UPDATE fb_pages SET {sets} WHERE id = ?", values)
+        else:
+            cols = ", ".join(page_data.keys())
+            placeholders = ", ".join(["?" for _ in page_data])
+            await db.execute(
+                f"INSERT INTO fb_pages ({cols}) VALUES ({placeholders})",
+                list(page_data.values())
+            )
         await db.commit()
         return page_data
     finally:
@@ -459,6 +487,44 @@ async def get_dashboard_analytics() -> dict:
         analytics["total_storage"] = dict(row)["total_size"] or 0
 
         return analytics
+    finally:
+        await db.close()
+
+
+async def save_page_stats(stats_data: dict) -> bool:
+    """Save daily snapshot of page statistics."""
+    db = await get_db()
+    try:
+        now = datetime.utcnow().isoformat()
+        await db.execute("""
+            INSERT INTO fb_page_stats (
+                page_db_id, fan_count, followers_count, total_engagement, 
+                avg_engagement, post_count_recent, captured_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            stats_data["page_db_id"], stats_data.get("fan_count", 0),
+            stats_data.get("followers_count", 0), stats_data.get("total_engagement", 0),
+            stats_data.get("avg_engagement", 0), stats_data.get("post_count_recent", 0),
+            now
+        ))
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+
+async def get_page_stats_history(page_db_id: str, days: int = 30) -> list[dict]:
+    """Get history of stats for a page to draw charts."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("""
+            SELECT * FROM fb_page_stats 
+            WHERE page_db_id = ? 
+            AND captured_at >= DATE('now', ?)
+            ORDER BY captured_at ASC
+        """, (page_db_id, f"-{days} days"))
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
     finally:
         await db.close()
 

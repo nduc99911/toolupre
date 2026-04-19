@@ -10,6 +10,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app import database as db
 from app.services.facebook_api import FacebookAPI
+from app.config import settings
+import os
 
 logger = logging.getLogger("reupmaster.scheduler")
 
@@ -91,6 +93,10 @@ class PostScheduler:
                 })
                 return
 
+            # Mark as processing immediately to prevent duplicate posting
+            await db.update_scheduled_post(post_id, {"status": "processing"})
+
+
             # Build caption
             caption = post.get("caption", "")
             hashtags = post.get("hashtags", "")
@@ -115,6 +121,10 @@ class PostScheduler:
                 # Also update video status
                 await db.update_video(post["video_id"], {"status": "published"})
                 logger.info(f"Post {post_id} published successfully")
+
+                # Auto cleanup if enabled
+                if settings.AUTO_CLEANUP_VIDEO:
+                    await self._cleanup_video_files(post["video_id"])
             else:
                 error = result.get("error", "Unknown error")
                 await db.update_scheduled_post(post_id, {
@@ -129,6 +139,32 @@ class PostScheduler:
                 "error_message": str(e),
             })
             logger.error(f"Exception publishing post {post_id}: {e}")
+
+    async def _cleanup_video_files(self, video_id: str):
+        """Delete physical video files to save space."""
+        try:
+            video = await db.get_video(video_id)
+            if not video:
+                return
+
+            files_to_delete = [video.get("original_path"), video.get("processed_path"), video.get("thumbnail_path")]
+            for path in files_to_delete:
+                if path and os.path.exists(path):
+                    try:
+                        os.remove(path)
+                        logger.info(f"Deleted file: {path}")
+                    except Exception as fe:
+                        logger.error(f"Error deleting file {path}: {fe}")
+
+            # Update database to reflect files are gone
+            await db.update_video(video_id, {
+                "original_path": "",
+                "processed_path": "",
+                "thumbnail_path": ""
+            })
+            logger.info(f"Cleanup completed for video {video_id}")
+        except Exception as e:
+            logger.error(f"Error during video cleanup: {e}")
 
     async def _check_seeding_tasks(self):
         """Check and execute pending seeding tasks."""

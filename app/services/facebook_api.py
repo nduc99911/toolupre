@@ -10,6 +10,9 @@ from datetime import datetime, timedelta
 
 from app.config import settings
 from app import database as db
+import logging
+
+logger = logging.getLogger("reupmaster.fbapi")
 
 FB_GRAPH_URL = "https://graph.facebook.com/v21.0"
 
@@ -84,8 +87,8 @@ class FacebookAPI:
 
         file_size = os.path.getsize(video_path)
 
-        # For files under 1GB, use simple upload
-        if file_size < 1_000_000_000:
+        # For files under 10MB, use simple upload to avoid HTTP 413 Request Entity Too Large
+        if file_size < 10_000_000:
             return await FacebookAPI._simple_video_upload(
                 page_id, access_token, video_path, caption, title
             )
@@ -97,8 +100,8 @@ class FacebookAPI:
     @staticmethod
     async def _simple_video_upload(page_id: str, access_token: str,
                                     video_path: str, caption: str,
-                                    title: str) -> dict:
-        """Simple video upload for files under 1GB."""
+                                    title: str, scheduled_publish_time: str = None) -> dict:
+        """Simple video upload for files under 10MB."""
         async with httpx.AsyncClient(timeout=600) as client:
             with open(video_path, "rb") as video_file:
                 files = {
@@ -109,6 +112,9 @@ class FacebookAPI:
                     "description": caption,
                     "title": title or "",
                 }
+                if scheduled_publish_time:
+                    data["published"] = "false"
+                    data["scheduled_publish_time"] = scheduled_publish_time
 
                 response = await client.post(
                     f"{FB_GRAPH_URL}/{page_id}/videos",
@@ -130,7 +136,7 @@ class FacebookAPI:
     @staticmethod
     async def _resumable_video_upload(page_id: str, access_token: str,
                                        video_path: str, caption: str,
-                                       title: str) -> dict:
+                                       title: str, scheduled_publish_time: str = None) -> dict:
         """Resumable video upload for large files."""
         file_size = os.path.getsize(video_path)
 
@@ -186,15 +192,20 @@ class FacebookAPI:
                     offset = int(transfer_data.get("start_offset", file_size))
 
             # Step 3: Finish upload
+            data = {
+                "access_token": access_token,
+                "upload_phase": "finish",
+                "upload_session_id": upload_session_id,
+                "title": title or "",
+                "description": caption,
+            }
+            if scheduled_publish_time:
+                data["published"] = "false"
+                data["scheduled_publish_time"] = scheduled_publish_time
+
             finish_response = await client.post(
                 f"{FB_GRAPH_URL}/{page_id}/videos",
-                data={
-                    "access_token": access_token,
-                    "upload_phase": "finish",
-                    "upload_session_id": upload_session_id,
-                    "title": title or "",
-                    "description": caption,
-                }
+                data=data
             )
             finish_data = finish_response.json()
 
@@ -215,40 +226,30 @@ class FacebookAPI:
         if not os.path.exists(video_path):
             return {"error": f"Video file not found: {video_path}"}
 
+        file_size = os.path.getsize(video_path)
+
         # Facebook requires scheduled_publish_time as Unix timestamp
         # Must be between 10 minutes and 6 months from now
-        timestamp = int(scheduled_time.timestamp())
+        timestamp = str(int(scheduled_time.timestamp()))
 
-        async with httpx.AsyncClient(timeout=600) as client:
-            with open(video_path, "rb") as video_file:
-                files = {
-                    "source": (os.path.basename(video_path), video_file, "video/mp4")
-                }
-                data = {
-                    "access_token": access_token,
-                    "description": caption,
-                    "title": title or "",
-                    "published": "false",
-                    "scheduled_publish_time": str(timestamp),
-                }
+        if file_size < 10_000_000:
+            result = await FacebookAPI._simple_video_upload(
+                page_id, access_token, video_path, caption, title, timestamp
+            )
+        else:
+            result = await FacebookAPI._resumable_video_upload(
+                page_id, access_token, video_path, caption, title, timestamp
+            )
 
-                response = await client.post(
-                    f"{FB_GRAPH_URL}/{page_id}/videos",
-                    files=files,
-                    data=data,
-                )
-
-            result = response.json()
-
-            if "error" in result:
-                return {"error": result["error"]["message"]}
-
-            return {
-                "success": True,
-                "post_id": result.get("id", ""),
-                "scheduled_time": scheduled_time.isoformat(),
-                "message": f"Video scheduled for {scheduled_time.strftime('%d/%m/%Y %H:%M')}"
-            }
+        if "error" in result:
+            return result
+        
+        return {
+            "success": True,
+            "post_id": result.get("post_id", ""),
+            "scheduled_time": scheduled_time.isoformat(),
+            "message": f"Video scheduled for {scheduled_time.strftime('%d/%m/%Y %H:%M')}"
+        }
 
     @staticmethod
     async def post_text(page_id: str, access_token: str,
@@ -311,3 +312,103 @@ class FacebookAPI:
                 return {"error": data["error"]["message"]}
 
             return {"success": True, "message": "Post deleted successfully"}
+
+    @staticmethod
+    async def exchange_code_for_token(code: str, redirect_uri: str) -> str:
+        """Exchange OAuth code for a short-lived user access token."""
+        from app.config import settings
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{FB_GRAPH_URL}/oauth/access_token",
+                params={
+                    "client_id": settings.FB_APP_ID,
+                    "redirect_uri": redirect_uri,
+                    "client_secret": settings.FB_APP_SECRET,
+                    "code": code,
+                }
+            )
+            data = response.json()
+            if "error" in data:
+                raise Exception(data["error"]["message"])
+            return data.get("access_token")
+
+    @staticmethod
+    async def get_user_pages(user_access_token: str) -> list[dict]:
+        """Get all pages managed by the user with their page access tokens."""
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{FB_GRAPH_URL}/me/accounts",
+                params={
+                    "access_token": user_access_token,
+                    "fields": "id,name,access_token,category",
+                    "limit": 100
+                }
+            )
+            data = response.json()
+            if "error" in data:
+                return [{"error": data["error"]["message"]}]
+            
+            pages = []
+            for item in data.get("data", []):
+                pages.append({
+                    "page_id": item["id"],
+                    "page_name": item["name"],
+                    "access_token": item["access_token"],
+                    "category": item.get("category", "")
+                })
+            return pages
+
+    @staticmethod
+    async def get_page_detailed_stats(page_id: str, access_token: str) -> dict:
+        """Fetch detailed insights for a page (fans, engagement, etc.)"""
+        async with httpx.AsyncClient(timeout=30) as client:
+            # 1. Get basic info & fans
+            info_resp = await client.get(
+                f"{FB_GRAPH_URL}/{page_id}",
+                params={
+                    "access_token": access_token,
+                    "fields": "name,fan_count,followers_count,engagement,link"
+                }
+            )
+            info = info_resp.json()
+            if "error" in info:
+                logger.error(f"FB Graph Error on {page_id} info: {info['error']}")
+                return {"error": info["error"]["message"]}
+
+            # 2. Get recent posts metrics (Last 10 posts)
+            posts_resp = await client.get(
+                f"{FB_GRAPH_URL}/{page_id}/posts",
+                params={
+                    "access_token": access_token,
+                    "fields": "id,message,created_time,reactions.summary(true),comments.summary(true),shares",
+                    "limit": 10
+                }
+            )
+            posts_json = posts_resp.json()
+            if "error" in posts_json:
+                logger.error(f"FB Graph Error on {page_id} posts: {posts_json['error']}")
+                return {"error": posts_json["error"]["message"]}
+                
+            posts_data = posts_json.get("data", [])
+            
+            total_reactions = 0
+            total_comments = 0
+            total_shares = 0
+            
+            for post in posts_data:
+                total_reactions += post.get("reactions", {}).get("summary", {}).get("total_count", 0)
+                total_comments += post.get("comments", {}).get("summary", {}).get("total_count", 0)
+                total_shares += post.get("shares", {}).get("count", 0)
+
+            return {
+                "id": page_id,
+                "name": info.get("name"),
+                "fan_count": info.get("fan_count", 0),
+                "followers_count": info.get("followers_count", 0),
+                "total_engagement": total_reactions + total_comments + total_shares,
+                "avg_engagement": round((total_reactions + total_comments + total_shares) / max(len(posts_data), 1), 1),
+                "reactions": total_reactions,
+                "comments": total_comments,
+                "shares": total_shares,
+                "post_count": len(posts_data)
+            }

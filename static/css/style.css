@@ -1349,6 +1349,24 @@ tr:last-child td {
     color: var(--text-tertiary);
 }
 
+/* ─── Analytics Rank Badges ─── */
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 13px;
+    color: #fff;
+    background: #4b4b61;
+}
+
+.rank-1 { background: linear-gradient(135deg, #ffd700, #ff8c00); box-shadow: 0 0 10px rgba(255, 215, 0, 0.4); }
+.rank-2 { background: linear-gradient(135deg, #c0c0c0, #708090); box-shadow: 0 0 10px rgba(192, 192, 192, 0.3); }
+.rank-3 { background: linear-gradient(135deg, #cd7f32, #8b4513); box-shadow: 0 0 10px rgba(205, 127, 50, 0.3); }
+
 /* ─── AI Style Selector ─── */
 .style-grid {
     display: grid;
