@@ -300,6 +300,11 @@ a:hover {
     z-index: 50;
 }
 
+#btn-menu {
+    display: none;
+    font-size: 20px;
+}
+
 .header-left {
     display: flex;
     align-items: center;
@@ -1523,6 +1528,11 @@ tr:last-child td {
 
     #btn-menu {
         display: inline-flex !important;
+        padding: 10px 15px !important;
+        margin-right: 10px;
+        font-size: 22px !important;
+        color: white !important;
+        background: var(--bg-tertiary) !important;
     }
 
     .two-col,
