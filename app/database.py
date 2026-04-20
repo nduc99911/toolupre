@@ -328,7 +328,7 @@ async def delete_scheduled_post(post_id: str) -> bool:
 
 async def get_pending_posts() -> list[dict]:
     """Get posts that are due for publishing."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now().isoformat()
     db = await get_db()
     try:
         cursor = await db.execute(

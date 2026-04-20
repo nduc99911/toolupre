@@ -4,6 +4,8 @@ Run with: python run.py
 """
 import sys
 import os
+import asyncio
+import logging
 
 # Fix Windows console encoding
 if sys.platform == 'win32':
@@ -13,6 +15,16 @@ if sys.platform == 'win32':
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
         pass
+
+    # ── Fix Windows asyncio: use ProactorEventLoop ──
+    # SelectorEventLoop on Windows produces harmless but extremely noisy
+    # "_SelectorSocketTransport._write_send()" errors during large socket
+    # writes (e.g. uploading videos via httpx to Facebook).
+    # ProactorEventLoop uses IOCP and handles this correctly.
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+    # Also suppress any residual asyncio transport warnings
+    logging.getLogger('asyncio').setLevel(logging.CRITICAL)
 
 import uvicorn
 from app.config import settings

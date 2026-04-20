@@ -58,27 +58,29 @@ async def _run_ffmpeg_async(cmd: list[str], timeout: int = 600) -> tuple[int, st
 def _run_ffmpeg_sync_with_progress(cmd: list[str], video_id: str, duration: float, timeout: int = 600) -> tuple[int, str]:
     """Run FFmpeg, parse progress from stderr, update global video_progress dict."""
     try:
+        # FFmpeg writes progress to stderr. We pipe stderr to parse it.
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             encoding='utf-8',
             errors='replace'
         )
 
         all_output = []
-        for line in process.stdout:
+        # Read stderr line by line (FFmpeg outputs progress here)
+        for line in process.stderr:
             all_output.append(line)
             line_str = line.strip()
 
             if "time=" in line_str and duration > 0:
-                time_match = re.search(r'time=(\d+):(\d+):(\d+\.\d+)', line_str)
+                time_match = re.search(r'time=(\d+):(\d+):(\d+\.?\d*)', line_str)
                 if time_match:
                     h, m, s = time_match.groups()
                     current_time = int(h) * 3600 + int(m) * 60 + float(s)
                     pct = min(99, (current_time / duration) * 100)
-                    video_progress[video_id] = pct
+                    video_progress[video_id] = round(pct, 1)
 
         process.wait(timeout=timeout)
         return process.returncode, "".join(all_output)
@@ -334,17 +336,15 @@ class VideoProcessor:
 
         # ─── Deep Anti-Copyright Filters ───
 
-        # Ghost Overlay: blend a colored layer at very low opacity
-        # This changes every single frame's pixel data without visible effect
+        # Ghost Overlay: Use colorbalance for fast per-frame color shift
+        # Changes entire frame hash without expensive per-pixel geq computation
         if options.get("ghost_overlay", False):
             opacity = float(options.get("ghost_overlay_value", 0.015))
-            # Create a semi-transparent colored noise overlay
-            # geq filter: add tiny random-like variation to each channel
-            video_filters.append(
-                f"geq=r='clip(r(X,Y)+{int(opacity*255)}, 0, 255)':"
-                f"g='clip(g(X,Y)-{int(opacity*128)}, 0, 255)':"
-                f"b='clip(b(X,Y)+{int(opacity*64)}, 0, 255)'"
-            )
+            # colorbalance is GPU-friendly and modifies every pixel's RGB values
+            rs = round(opacity * 2, 3)
+            gm = round(-opacity, 3)
+            bh = round(opacity * 0.5, 3)
+            video_filters.append(f"colorbalance=rs={rs}:gm={gm}:bh={bh}")
 
         # Deep Noise: extremely subtle noise that's imperceptible
         # but completely changes the binary hash of every frame
@@ -361,12 +361,12 @@ class VideoProcessor:
             video_filters.append(f"pad=iw+{shift}:ih+{shift}:{shift}:{shift}:black")
             video_filters.append(f"crop=iw-{shift}:ih-{shift}:0:0")
 
-        # Color Channel Shift: slightly offset RGB channels
+        # Color Channel Shift: use hue rotate for fast channel manipulation
+        # Much faster than geq while still modifying color data per-frame
         if options.get("color_channel_shift", False):
             shift_val = int(options.get("color_channel_shift_value", 2))
-            video_filters.append(
-                f"geq=r='r(X,Y)':g='g(X+{shift_val},Y)':b='b(X,Y+{shift_val})'"
-            )
+            # Use hue shift (very fast) + slight saturation tweak
+            video_filters.append(f"hue=h={shift_val}:s=1")
 
         return video_filters, audio_filters
 
@@ -408,7 +408,7 @@ class VideoProcessor:
             )
 
             # Build command
-            cmd = [get_ffmpeg(), "-y", "-i", input_path]
+            cmd = [get_ffmpeg(), "-y", "-hide_banner", "-loglevel", "info", "-stats", "-i", input_path]
 
             # Add silence at beginning if requested
             add_silence = options.get("add_silence", False)
@@ -429,11 +429,13 @@ class VideoProcessor:
             # Codec settings
             if options.get("reencode", True):
                 codec = options.get("codec", "libx264")
-                crf = int(options.get("crf", 18))
+                crf = int(options.get("crf", 23))
                 cmd.extend([
                     "-c:v", codec,
                     "-crf", str(crf),
-                    "-preset", "medium",
+                    "-preset", "ultrafast",
+                    "-tune", "fastdecode",
+                    "-threads", "0",
                     "-pix_fmt", "yuv420p",
                 ])
                 if not options.get("remove_audio", False):
