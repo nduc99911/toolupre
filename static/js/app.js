@@ -472,7 +472,12 @@ function renderVideoGrid(videos) {
         const isSelected = state.selectedVideos.has(v.id);
 
         html += `
-        <div class="video-card ${isSelected ? 'selected' : ''}" data-id="${v.id}">
+        <div class="video-card ${isSelected ? 'selected' : ''}" data-id="${v.id}"
+             onmousedown="startLongPress(event, '${v.id}')" 
+             onmouseup="cancelLongPress()" 
+             onmouseleave="cancelLongPress()"
+             ontouchstart="startLongPress(event, '${v.id}')" 
+             ontouchend="cancelLongPress()">
             <input type="checkbox" class="video-select-checkbox" 
                    ${isSelected ? 'checked' : ''} 
                    onchange="toggleVideoSelection('${v.id}', this.checked)">
@@ -504,6 +509,32 @@ function renderVideoGrid(videos) {
     });
     grid.innerHTML = html;
     updateBatchBar();
+}
+
+let longPressTimer;
+function startLongPress(e, id) {
+    longPressTimer = setTimeout(() => {
+        const checked = !state.selectedVideos.has(id);
+        toggleVideoSelection(id, checked);
+
+        // Find checkbox and update it visually
+        const card = document.querySelector(`.video-card[data-id="${id}"]`);
+        if (card) {
+            const cb = card.querySelector('.video-select-checkbox');
+            if (cb) cb.checked = checked;
+            if (checked) card.classList.add('selected');
+            else card.classList.remove('selected');
+        }
+
+        // Vibrate if supported
+        if (window.navigator.vibrate) window.navigator.vibrate(50);
+
+        showToast(checked ? 'Đã chọn' : 'Đã bỏ chọn', 'info');
+    }, 600);
+}
+
+function cancelLongPress() {
+    clearTimeout(longPressTimer);
 }
 
 function toggleVideoSelection(id, checked) {
