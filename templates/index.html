@@ -112,12 +112,17 @@
             </div>
         </aside>
 
+        <!-- Sidebar Mobile Overlay -->
+        <div class="sidebar-overlay" id="sidebar-overlay"
+            onclick="document.getElementById('sidebar').classList.remove('open'); this.classList.remove('active');">
+        </div>
+
         <!-- ═══ MAIN CONTENT ═══ -->
         <main class="main-content">
             <header class="main-header">
                 <div class="header-left">
                     <button class="btn-header" id="btn-menu"
-                        onclick="document.getElementById('sidebar').classList.toggle('open')"
+                        onclick="document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-overlay').classList.toggle('active');"
                         style="display:none;">☰</button>
                     <h1 class="header-title" id="page-title">Dashboard</h1>
                 </div>

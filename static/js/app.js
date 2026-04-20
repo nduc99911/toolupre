@@ -96,6 +96,7 @@ function navigateTo(page) {
 
     // Close mobile sidebar
     document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('active');
 }
 
 // ═══════════════════════════════════════════
