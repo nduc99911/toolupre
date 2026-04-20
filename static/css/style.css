@@ -1777,21 +1777,29 @@ tr:last-child td {
 
 .video-select-checkbox {
     position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 20;
-    width: 22px;
-    height: 22px;
+    top: 0;
+    left: 0;
+    z-index: 30;
+    width: 45px;
+    height: 45px;
     cursor: pointer;
     accent-color: var(--accent-primary);
-    opacity: 0;
-    transition: opacity 0.2s;
+    opacity: 0.2;
+    transition: all 0.2s;
+    margin: 0;
+    padding: 10px;
 }
 
 .video-card:hover .video-select-checkbox,
 .video-select-checkbox:checked {
     opacity: 1;
+    transform: scale(1.15);
 }
+
+.video-select-checkbox:checked {
+    filter: drop-shadow(0 0 10px var(--accent-primary));
+}
+
 
 .batch-action-bar {
     position: fixed;
