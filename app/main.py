@@ -23,6 +23,7 @@ from app.services.video_processor import VideoProcessor
 from app.services.ai_service import rewrite_text, generate_caption, generate_hashtags
 from app.services.facebook_api import FacebookAPI
 from app.services.scheduler import post_scheduler
+from app.services.process_queue import process_queue
 
 
 # ─── In-Memory Log Handler ───
@@ -296,17 +297,13 @@ async def api_process_video(video_id: str, request: Request):
     if video["status"] not in ("downloaded", "processed", "failed"):
         raise HTTPException(400, f"Video status is '{video['status']}', cannot process")
 
-    # Update status to processing immediately so the frontend polling works correctly
-    await db.update_video(video_id, {"status": "processing"})
-
-    # Process in background
-    import asyncio
-    asyncio.create_task(_process_task(video_id, options))
-
+    # Add to sequential queue
+    await process_queue.add_videos([video_id], options)
+    
     return {
         "id": video_id,
         "status": "processing",
-        "message": "Video processing started"
+        "message": "Video added to sequential processing queue"
     }
 
 
@@ -333,17 +330,20 @@ async def api_batch_process(request: Request):
     video_ids = data.get("video_ids", [])
     options = data.get("options", VideoProcessor.get_default_options())
 
-    import asyncio
-    for vid_id in video_ids:
-        # Update immediately to avoid UI freezing or instant-completion bugs on frontend polling
-        await db.update_video(vid_id, {"status": "processing"})
-        asyncio.create_task(_process_task(vid_id, options))
+    # Add all to sequential queue
+    await process_queue.add_videos(video_ids, options)
 
     return {
         "count": len(video_ids),
         "status": "processing",
         "message": f"Processing {len(video_ids)} videos"
     }
+
+
+@app.get("/api/process/queue")
+async def api_get_process_queue():
+    """Get sequential processing queue status."""
+    return process_queue.get_status()
 
 
 # ═══════════════════════════════════════════

@@ -1769,3 +1769,83 @@ tr:last-child td {
 .log-DEBUG {
     color: #8888a8;
 }
+
+/* ─── Video Selection ─── */
+.video-card {
+    position: relative;
+}
+
+.video-select-checkbox {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 20;
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    accent-color: var(--accent-primary);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.video-card:hover .video-select-checkbox,
+.video-select-checkbox:checked {
+    opacity: 1;
+}
+
+.batch-action-bar {
+    position: fixed;
+    bottom: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-accent);
+    padding: 12px 24px;
+    border-radius: 40px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    backdrop-filter: blur(10px);
+}
+
+.batch-action-bar.active {
+    bottom: 30px;
+}
+
+.selected-count {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-primary-light);
+}
+
+.batch-btns {
+    display: flex;
+    gap: 10px;
+}
+
+/* ─── Queue Status ─── */
+.queue-status-card {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(108, 92, 231, 0.05);
+    border: 1px dashed var(--border-accent);
+    border-radius: var(--radius-md);
+}
+
+.queue-progress {
+    height: 6px;
+    background: var(--bg-glass);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+.queue-progress-bar {
+    height: 100%;
+    background: var(--gradient-primary);
+    width: 0%;
+    transition: width 0.5s ease;
+}

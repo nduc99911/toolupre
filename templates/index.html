@@ -519,6 +519,7 @@
                             </div>
                         </div>
                         <div id="process-status" style="margin-top: 16px;"></div>
+                        <div id="queue-status-container"></div>
                     </div>
                 </div>
 
@@ -1232,6 +1233,16 @@
                 <video id="video-modal-player" controls autoplay
                     style="width:100%;max-height:70vh;border-radius:0 0 12px 12px;background:#000;"></video>
             </div>
+        </div>
+    </div>
+
+    <!-- Batch Action Bar -->
+    <div class="batch-action-bar" id="batch-action-bar">
+        <div class="selected-count" id="selected-count">Đã chọn 0 video</div>
+        <div class="batch-btns">
+            <button class="btn btn-secondary btn-sm" onclick="batchAddProcess()">⚡ Xử lý hàng loạt</button>
+            <button class="btn btn-ghost btn-sm" onclick="clearSelection()" style="color:var(--text-tertiary);">Bỏ
+                chọn</button>
         </div>
     </div>
 

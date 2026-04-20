@@ -14,7 +14,9 @@ const state = {
     processOptions: {},
     selectedStyle: 'viral',
     selectedPageId: null,
+    selectedPageId: null,
     pollIntervals: {},
+    selectedVideos: new Set(),
 };
 
 // ═══════════════════════════════════════════
@@ -30,6 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(loadStats, 10000);
     // Auto-refresh video statuses every 5 seconds
     setInterval(refreshVideoStatuses, 5000);
+    // Auto-refresh queue status every 3 seconds
+    setInterval(updateQueueStatus, 3000);
 });
 
 // ═══════════════════════════════════════════
@@ -465,9 +469,13 @@ function renderVideoGrid(videos) {
         const fileSize = formatSize(v.file_size);
         const badge = getStatusBadge(v.status);
         const thumbUrl = v.thumbnail_path ? `/api/file/${v.id}/thumbnail` : '';
+        const isSelected = state.selectedVideos.has(v.id);
 
         html += `
-        <div class="video-card" data-id="${v.id}">
+        <div class="video-card ${isSelected ? 'selected' : ''}" data-id="${v.id}">
+            <input type="checkbox" class="video-select-checkbox" 
+                   ${isSelected ? 'checked' : ''} 
+                   onchange="toggleVideoSelection('${v.id}', this.checked)">
             <div class="video-thumb" onclick="openVideoModal('${v.id}')">
                 ${thumbUrl
                 ? `<img src="${thumbUrl}" alt="thumb" loading="lazy">`
@@ -495,6 +503,60 @@ function renderVideoGrid(videos) {
         </div>`;
     });
     grid.innerHTML = html;
+    updateBatchBar();
+}
+
+function toggleVideoSelection(id, checked) {
+    if (checked) {
+        state.selectedVideos.add(id);
+    } else {
+        state.selectedVideos.delete(id);
+    }
+    updateBatchBar();
+}
+
+function updateBatchBar() {
+    const bar = document.getElementById('batch-action-bar');
+    const countDisplay = document.getElementById('selected-count');
+    const count = state.selectedVideos.size;
+
+    if (count > 0 && state.currentPage === 'library') {
+        bar.classList.add('active');
+        countDisplay.innerText = `Đã chọn ${count} video`;
+    } else {
+        bar.classList.remove('active');
+    }
+}
+
+function clearSelection() {
+    state.selectedVideos.clear();
+    renderVideoGrid(state.videos);
+}
+
+async function batchAddProcess() {
+    if (state.selectedVideos.size === 0) return;
+
+    const videoIds = Array.from(state.selectedVideos);
+    try {
+        const result = await api('/api/process/batch', {
+            method: 'POST',
+            body: JSON.stringify({
+                video_ids: videoIds,
+                options: state.processOptions
+            })
+        });
+
+        showToast(`Đã thêm ${videoIds.length} video vào hàng đợi xử lý`, 'success');
+        state.selectedVideos.clear();
+        updateBatchBar();
+        loadVideos();
+        videoIds.forEach(id => startPolling(id));
+
+        // Switch to process page to see progress
+        navigateTo('process');
+    } catch (err) {
+        showToast(`Lỗi: ${err.message}`, 'error');
+    }
 }
 
 async function deleteVideo(videoId) {
