@@ -1723,11 +1723,29 @@ async function loadMassScheduleData() {
     }
 }
 
+function updateMassInterval() {
+    const preset = document.getElementById('mass-interval-preset').value;
+    const customGroup = document.getElementById('group-custom-interval');
+    if (preset === 'custom') {
+        customGroup.style.display = 'block';
+    } else {
+        customGroup.style.display = 'none';
+        document.getElementById('mass-interval').value = preset;
+    }
+}
+
 async function executeMassSchedule() {
     const videoIds = [...document.querySelectorAll('.mass-video-cb:checked')].map(cb => cb.value);
     const pageIds = [...document.querySelectorAll('.mass-page-cb:checked')].map(cb => cb.value);
     const startTime = document.getElementById('mass-start-time').value;
-    const interval = document.getElementById('mass-interval').value || 30;
+    const preset = document.getElementById('mass-interval-preset').value;
+    let interval = 30;
+    if (preset === 'custom') {
+        interval = document.getElementById('mass-interval').value || 30;
+    } else {
+        interval = preset;
+    }
+
     const caption = document.getElementById('mass-caption').value;
     const hashtags = document.getElementById('mass-hashtags').value;
     const useAiSpin = document.getElementById('mass-ai-spin').checked;

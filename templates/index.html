@@ -393,13 +393,25 @@
                             </div>
 
                             <div class="form-group">
+                                <label class="form-label">Chế độ giãn cách</label>
+                                <select class="form-select" id="mass-interval-preset" onchange="updateMassInterval()">
+                                    <option value="30">Cách nhau 30 phút (Chống Spam cơ bản)</option>
+                                    <option value="60">Cách nhau 1 tiếng</option>
+                                    <option value="120">Cách nhau 2 tiếng</option>
+                                    <option value="1440">Mỗi ngày 1 bài (cùng lúc bắt đầu)</option>
+                                    <option value="custom">Tùy chỉnh khoảng cách (phút)...</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="group-custom-interval" style="display:none;">
                                 <label class="form-label">Khoảng cách giữa mỗi bài (phút)</label>
                                 <input type="number" class="form-input" id="mass-interval" value="30" min="5"
                                     max="1440">
                                 <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">
-                                    💡 SO9 khuyến nghị 30-60 phút để tránh bị Facebook quét spam
+                                    💡 Khoảng cách tùy chỉnh. Nhập 1440 Nếu muốn xếp lịch 1 bài/ngày.
                                 </div>
                             </div>
+
 
                             <button class="btn btn-primary btn-lg" onclick="executeMassSchedule()" style="width:100%;">
                                 🚀 Tạo lịch đăng hàng loạt
