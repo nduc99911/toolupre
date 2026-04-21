@@ -432,12 +432,10 @@ async function refreshVideoStatuses() {
 // ═══════════════════════════════════════════
 async function loadVideos(statusFilter) {
     if (statusFilter !== undefined) state.currentStatusFilter = statusFilter;
-    const folderFilter = document.getElementById('lib-folder-filter')?.value || '';
-
     try {
         let url = '/api/videos?limit=200';
         if (state.currentStatusFilter && state.currentStatusFilter !== 'all') url += `&status=${state.currentStatusFilter}`;
-        if (folderFilter) url += `&folder_id=${folderFilter}`;
+        if (state.currentFolderFilter) url += `&folder_id=${state.currentFolderFilter}`;
 
         const data = await api(url);
         state.videos = data.videos || [];
@@ -629,40 +627,63 @@ async function loadFolders() {
         const folders = data.folders || [];
         state.folders = folders;
 
-        // Update filters in Library and Mass Schedule
-        const libFilter = document.getElementById('lib-folder-filter');
-        const batchSelect = document.getElementById('batch-move-folder-select');
+        // Update Folder Chips in Library
+        const container = document.getElementById('folder-badge-container');
+        const chips = document.getElementById('folder-chips');
+        if (container && chips && state.currentPage === 'library') {
+            if (folders.length > 0) {
+                container.style.display = 'block';
+                let html = `
+                    <div class="folder-chip ${state.currentFolderFilter === '' ? 'active' : ''}" 
+                         onclick="selectFolder('')">
+                        📁 Tất cả
+                    </div>
+                    <div class="folder-chip ${state.currentFolderFilter === 'none' ? 'active' : ''}" 
+                         onclick="selectFolder('none')">
+                        📦 Chưa phân loại
+                    </div>
+                `;
+                html += folders.map(f => `
+                    <div class="folder-chip ${state.currentFolderFilter === f.id ? 'active' : ''}" 
+                         onclick="selectFolder('${f.id}')">
+                        📂 ${escapeHtml(f.name)} (${f.video_count})
+                    </div>
+                `).join('');
+                chips.innerHTML = html;
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        // Update Mass Schedule Select
         const massFilter = document.getElementById('mass-folder-filter');
-
-        const currentLibFilter = libFilter?.value;
-        const currentMassFilter = massFilter?.value;
-
-        const folderOptions = `
-            <option value="">📁 Tất cả thư mục</option>
-            <option value="none">📦 Chưa phân loại</option>
-            ${folders.map(f => `<option value="${f.id}">${f.name} (${f.video_count})</option>`).join('')}
-        `;
-
-        const moveOptions = `
-            <option value="">-- Chuyển vào --</option>
-            <option value="none">Xóa khỏi thư mục</option>
-            ${folders.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
-        `;
-
-        if (libFilter) {
-            libFilter.innerHTML = folderOptions;
-            libFilter.value = currentLibFilter || "";
-        }
-        if (batchSelect) {
-            batchSelect.innerHTML = moveOptions;
-        }
         if (massFilter) {
-            massFilter.innerHTML = folderOptions.replace('📁 Tất cả thư mục', '📂 Tất cả video (Không lọc thư mục)').replace('📦 Chưa phân loại', '📦 Video chưa phân loại');
+            const currentMassFilter = massFilter.value;
+            massFilter.innerHTML = `
+                <option value="">📂 Tất cả video (Không lọc thư mục)</option>
+                <option value="none">📦 Video chưa phân loại</option>
+                ${folders.map(f => `<option value="${f.id}">${f.name} (${f.video_count})</option>`).join('')}
+            `;
             massFilter.value = currentMassFilter || "";
+        }
+
+        // Update Batch Move Select
+        const batchSelect = document.getElementById('batch-move-folder-select');
+        if (batchSelect) {
+            batchSelect.innerHTML = `
+                <option value="">-- Chuyển vào --</option>
+                <option value="none">Xóa khỏi thư mục</option>
+                ${folders.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
+            `;
         }
     } catch (err) {
         console.error('Failed to load folders:', err);
     }
+}
+
+function selectFolder(folderId) {
+    state.currentFolderFilter = folderId;
+    loadVideos();
 }
 
 async function showCreateFolderModal() {
@@ -1988,6 +2009,14 @@ async function loadMassScheduleVideos() {
     } catch (err) {
         console.error('Load mass schedule videos failed:', err);
     }
+}
+
+// ─── UTILS ───
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function updateMassInterval() {

@@ -472,14 +472,18 @@
                         <button class="tab-btn" onclick="filterVideos('failed', this)">Lỗi</button>
                     </div>
                     <div style="display:flex; gap:10px;">
-                        <select class="form-select form-select-sm" id="lib-folder-filter" onchange="loadVideos()"
-                            style="width:150px; background:rgba(255,255,255,0.05);">
-                            <option value="">📁 Tất cả thư mục</option>
-                            <option value="none">📂 Chưa phân loại</option>
-                        </select>
-                        <button class="btn btn-ghost btn-sm" onclick="showCreateFolderModal()">➕ Thư mục
-                            mới</button>
+                        <button class="btn btn-ghost btn-sm" onclick="showCreateFolderModal()">➕ Thư mục mới</button>
                         <button class="btn btn-ghost btn-sm" onclick="loadVideos()">🔄 Làm mới</button>
+                    </div>
+                </div>
+
+                <!-- Folder Badges Area -->
+                <div id="folder-badge-container" style="margin-bottom: 20px; display: none;">
+                    <div
+                        style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-tertiary); margin-bottom: 8px; font-weight: 600;">
+                        📁 Thư mục của bạn</div>
+                    <div id="folder-chips" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        <!-- Chips will be injected here -->
                     </div>
                 </div>
 

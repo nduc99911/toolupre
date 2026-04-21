@@ -1270,6 +1270,35 @@ tr:last-child td {
     color: var(--text-primary);
 }
 
+/* Folder Chips */
+.folder-chip {
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.folder-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-accent);
+    color: var(--text-primary);
+}
+
+.folder-chip.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: white;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+}
+
 /* ─── Process Options Grid ─── */
 .options-grid {
     display: grid;
