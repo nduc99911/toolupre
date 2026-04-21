@@ -465,6 +465,22 @@
                         </div>
                         <button class="btn btn-ghost btn-sm" onclick="loadVideos()">🔄 Làm mới</button>
                     </div>
+
+                    <!-- Library Batch Actions -->
+                    <div id="library-batch-actions"
+                        style="margin-bottom: 20px; display: none; align-items: center; gap: 15px; padding: 10px 15px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid var(--border-color);">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="lib-select-all" onclick="toggleSelectAllLibrary(this.checked)"
+                                style="width: 20px; height: 20px;">
+                            <label for="lib-select-all" style="font-weight: 600; font-size: 14px; cursor: pointer;">Chọn
+                                tất cả</label>
+                        </div>
+                        <div style="flex: 1; font-size: 13px; color: var(--text-secondary);" id="lib-selected-count">Đã
+                            chọn 0 video</div>
+                        <button class="btn btn-ghost btn-sm" onclick="batchDeleteVideos()"
+                            style="color: var(--accent-danger); border-color: rgba(255,107,107,0.3);">🗑️ Xóa hàng
+                            loạt</button>
+                    </div>
                     <div class="video-grid" id="video-grid">
                         <div class="empty-state" style="grid-column: 1/-1;">
                             <div class="empty-icon">🎬</div>

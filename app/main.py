@@ -229,6 +229,40 @@ async def api_list_videos(status: str = None, limit: int = 100):
     return {"videos": videos, "count": len(videos)}
 
 
+@app.post("/api/videos/batch-delete")
+async def api_batch_delete_videos(request: Request):
+    """Delete multiple videos at once."""
+    params = await request.json()
+    video_ids = params.get("video_ids", [])
+    
+    if not video_ids:
+        raise HTTPException(400, "No video IDs provided")
+        
+    deleted_count = 0
+    for vid_id in video_ids:
+        # We reuse the logic from delete_video
+        video = await db.get_video(vid_id)
+        if not video: continue
+        
+        # Physical cleanup
+        for path in [video.get("original_path"), video.get("processed_path"), video.get("thumbnail_path")]:
+            if path and os.path.exists(path):
+                try:
+                    if os.path.isdir(path):
+                        import shutil
+                        shutil.rmtree(path)
+                    else:
+                        os.remove(path)
+                except Exception as e:
+                    print(f"Cleanup error for {path}: {e}")
+        
+        # DB deletion
+        await db.delete_video(vid_id)
+        deleted_count += 1
+        
+    return {"success": True, "message": f"Đã xóa {deleted_count} video thành công"}
+
+
 @app.get("/api/videos/{video_id}")
 async def api_get_video(video_id: str):
     """Get single video details."""

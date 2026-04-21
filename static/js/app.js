@@ -544,6 +544,7 @@ function toggleVideoSelection(id, checked) {
         state.selectedVideos.delete(id);
     }
     updateBatchBar();
+    updateLibraryBatchActions();
 }
 
 function updateBatchBar() {
@@ -556,6 +557,60 @@ function updateBatchBar() {
         countDisplay.innerText = `Đã chọn ${count} video`;
     } else {
         bar.classList.remove('active');
+    }
+}
+
+function updateLibraryBatchActions() {
+    const bar = document.getElementById('library-batch-actions');
+    const countEl = document.getElementById('lib-selected-count');
+    const selectAllCheck = document.getElementById('lib-select-all');
+    if (!bar) return;
+
+    const count = state.selectedVideos.size;
+    if (count > 0) {
+        bar.style.display = 'flex';
+        countEl.textContent = `Đã chọn ${count} video`;
+    } else {
+        bar.style.display = 'none';
+        if (selectAllCheck) selectAllCheck.checked = false;
+    }
+}
+
+function toggleSelectAllLibrary(checked) {
+    const checkboxes = document.querySelectorAll('.video-select-checkbox');
+    checkboxes.forEach(cb => {
+        const vidId = cb.closest('.video-card').dataset.id;
+        cb.checked = checked;
+        if (checked) {
+            state.selectedVideos.add(vidId);
+            cb.closest('.video-card').classList.add('selected');
+        } else {
+            state.selectedVideos.delete(vidId);
+            cb.closest('.video-card').classList.remove('selected');
+        }
+    });
+    updateBatchBar();
+    updateLibraryBatchActions();
+}
+
+async function batchDeleteVideos() {
+    const count = state.selectedVideos.size;
+    if (count === 0) return;
+    if (!confirm(`Bạn có chắc chắn muốn xóa ${count} video đã chọn không? Thao tác này không thể hoàn tác.`)) return;
+
+    try {
+        const videoIds = Array.from(state.selectedVideos);
+        const result = await api('/api/videos/batch-delete', {
+            method: 'POST',
+            body: JSON.stringify({ video_ids: videoIds })
+        });
+        showToast(result.message, 'success');
+        state.selectedVideos.clear();
+        loadVideos();
+        updateBatchBar();
+        updateLibraryBatchActions();
+    } catch (err) {
+        showToast('Không thể xóa video hàng loạt', 'error');
     }
 }
 
