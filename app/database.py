@@ -129,6 +129,19 @@ async def init_db():
     db = await get_db()
     try:
         await db.executescript(SCHEMA)
+        
+        # Migration for folders feature
+        try:
+            # Check if folder_id exists in videos
+            await db.execute("SELECT folder_id FROM videos LIMIT 1")
+        except:
+            # If not, add it
+            try:
+                await db.execute("ALTER TABLE videos ADD COLUMN folder_id TEXT DEFAULT NULL")
+                await db.commit()
+            except:
+                pass
+                
         await db.commit()
     finally:
         await db.close()
