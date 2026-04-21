@@ -832,10 +832,13 @@ async def api_publish_video(request: Request):
     if not video_path or not os.path.exists(video_path):
         raise HTTPException(400, "Video file not found")
 
-    # Build full caption
-    full_caption = caption
-    if hashtags:
-        full_caption = f"{caption}\n\n{hashtags}"
+    # Build full caption (fallback to original title if empty)
+    final_caption = caption if caption.strip() else video.get("title", "")
+    final_hashtags = hashtags if hashtags.strip() else ""
+    
+    full_caption = final_caption
+    if final_hashtags:
+        full_caption = f"{final_caption}\n\n{final_hashtags}"
 
     # Publish
     result = await FacebookAPI.post_video(
@@ -874,13 +877,17 @@ async def api_schedule_post(request: Request):
     if not video:
         raise HTTPException(404, "Video not found")
 
+    # Fallback to original title if empty
+    final_caption = caption if caption.strip() else video.get("title", "")
+    final_hashtags = hashtags if hashtags.strip() else ""
+
     # Create scheduled post
     result = await post_scheduler.add_scheduled_post(
         video_id=video_id,
         page_id=page_db_id,
         scheduled_time=scheduled_time,
-        caption=caption,
-        hashtags=hashtags,
+        caption=final_caption,
+        hashtags=final_hashtags,
     )
 
     return {
