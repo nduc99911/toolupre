@@ -1066,6 +1066,17 @@ async function loadSchedule() {
     }
 }
 
+async function retryFailedPosts() {
+    if (!confirm('Hệ thống sẽ đặt các bài đăng đang bị lỗi về trạng thái chờ để đăng lại. Tiếp tục?')) return;
+    try {
+        const result = await api('/api/schedule/retry-failed', { method: 'POST' });
+        showToast(result.message, 'success');
+        loadSchedule();
+    } catch (err) {
+        showToast('Không thể đặt lại bài lỗi', 'error');
+    }
+}
+
 function renderScheduleList(posts) {
     const container = document.getElementById('schedule-list');
     if (!posts || posts.length === 0) {

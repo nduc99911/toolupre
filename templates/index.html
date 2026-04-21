@@ -692,7 +692,12 @@
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><span class="icon">📅</span> Lịch đăng bài</div>
-                            <button class="btn btn-ghost btn-sm" onclick="loadSchedule()">🔄 Làm mới</button>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-secondary btn-sm" onclick="retryFailedPosts()"
+                                    style="color: var(--accent-warning); border-color: var(--accent-warning);">🔄 Thử
+                                    lại bài lỗi</button>
+                                <button class="btn btn-ghost btn-sm" onclick="loadSchedule()">🔄 Làm mới</button>
+                            </div>
                         </div>
                         <div class="schedule-list" id="schedule-list">
                             <div class="empty-state">

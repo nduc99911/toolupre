@@ -904,6 +904,21 @@ async def api_list_scheduled(status: str = None):
     return {"posts": posts, "count": len(posts)}
 
 
+@app.post("/api/schedule/retry-failed")
+async def api_retry_failed_posts():
+    """Reset failed scheduled posts to pending."""
+    adb = await db.get_db()
+    try:
+        # Update all 'failed' posts to 'pending'
+        await adb.execute(
+            "UPDATE scheduled_posts SET status = 'pending', error_message = '' WHERE status = 'failed'"
+        )
+        await adb.commit()
+        return {"success": True, "message": "Đã đặt lại các bài lỗi về trạng thái chờ đăng"}
+    finally:
+        await adb.close()
+
+
 @app.delete("/api/schedule/{post_id}")
 async def api_cancel_scheduled(post_id: str):
     """Cancel a scheduled post."""
