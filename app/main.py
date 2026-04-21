@@ -284,6 +284,23 @@ async def api_process_options():
     }
 
 
+@app.post("/api/process/batch")
+async def api_batch_process(request: Request):
+    """Process multiple videos."""
+    data = await request.json()
+    video_ids = data.get("video_ids", [])
+    options = data.get("options", VideoProcessor.get_default_options())
+
+    # Add all to sequential queue
+    await process_queue.add_videos(video_ids, options)
+
+    return {
+        "count": len(video_ids),
+        "status": "processing",
+        "message": f"Processing {len(video_ids)} videos"
+    }
+
+
 @app.post("/api/process/{video_id}")
 async def api_process_video(video_id: str, request: Request):
     """Process a video with given options."""
@@ -321,23 +338,6 @@ async def _process_task(video_id: str, options: dict):
             "status": "failed",
             "error_message": str(e)
         })
-
-
-@app.post("/api/process/batch")
-async def api_batch_process(request: Request):
-    """Process multiple videos."""
-    data = await request.json()
-    video_ids = data.get("video_ids", [])
-    options = data.get("options", VideoProcessor.get_default_options())
-
-    # Add all to sequential queue
-    await process_queue.add_videos(video_ids, options)
-
-    return {
-        "count": len(video_ids),
-        "status": "processing",
-        "message": f"Processing {len(video_ids)} videos"
-    }
 
 
 @app.get("/api/process/queue")
