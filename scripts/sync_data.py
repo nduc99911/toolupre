@@ -1,34 +1,29 @@
 import os
 import sqlite3
 from pathlib import Path
-import sys
-
-# Add parent directory to path to import app modules
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from app.config import settings
 
 def sync_storage():
-    print("🚀 Bắt đầu quét thư mục storage để khôi phục dữ liệu...")
+    print("🚀 Bắt đầu quét thư mục storage để khôi phục dữ liệu (Bản siêu tối giản)...")
     
-    db_path = settings.DATABASE_URL.replace("sqlite:///", "")
-    if os.name == 'nt' and db_path.startswith('/'):
-        db_path = db_path[1:]
+    # Tự xác định đường dẫn mà không cần import config
+    base_dir = Path(__file__).resolve().parent.parent
+    db_path = base_dir / "storage" / "reupmaster.db"
+    download_dir = base_dir / "storage" / "downloads"
+    processed_dir = base_dir / "storage" / "processed"
     
-    if not os.path.exists(db_path):
+    if not db_path.exists():
         print(f"❌ Không tìm thấy file database tại: {db_path}")
         return
 
-    # Use standard sqlite3 for simplicity and zero-dependency
-    conn = sqlite3.connect(db_path)
+    # Kết nối database
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     db = conn.cursor()
     
     try:
         # 1. Quét thư mục downloads
-        download_dir = Path(settings.DOWNLOAD_DIR)
         if not download_dir.exists():
-            print(f"❌ Không tìm thấy thư mục: {download_dir}")
+            print(f"❌ Không tìm thấy thư mục download: {download_dir}")
             return
 
         files = list(download_dir.glob("*"))
@@ -37,11 +32,9 @@ def sync_storage():
         for file_path in files:
             video_id = ""
             if file_path.is_dir():
-                # Xử lý slideshow folder
                 video_id = file_path.name.split('_')[0]
                 title = f"Restored Slideshow {video_id}"
             elif file_path.suffix.lower() in ['.mp4', '.mkv', '.webm']:
-                # Xử lý video file
                 video_id = file_path.name.split('_')[0]
                 title = f"Restored Video {video_id}"
             else:
@@ -51,8 +44,7 @@ def sync_storage():
             
             # Kiểm tra xem đã có trong DB chưa
             db.execute("SELECT id FROM videos WHERE id = ?", (video_id,))
-            if db.fetchone():
-                continue
+            if db.fetchone(): continue
             
             print(f"📦 Khôi phục: {video_id}")
             db.execute(
@@ -61,8 +53,7 @@ def sync_storage():
             )
             restored_count += 1
                 
-        # 2. Xử lý thư mục processed (nếu có)
-        processed_dir = Path(settings.PROCESSED_DIR)
+        # 2. Cập nhật trạng thái đã xử lý
         if processed_dir.exists():
             processed_files = list(processed_dir.glob("processed_*"))
             for p_file in processed_files:
@@ -77,8 +68,6 @@ def sync_storage():
 
         conn.commit()
         print(f"\n✅ THÀNH CÔNG! Đã khôi phục {restored_count} video vào thư viện.")
-        print("💡 Bây giờ bạn hãy vào lại giao diện Web và nhấn F5 để xem kết quả.")
-    
     except Exception as e:
         print(f"❌ Lỗi: {e}")
     finally:
