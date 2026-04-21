@@ -47,9 +47,11 @@ def sync_storage():
             if db.fetchone(): continue
             
             print(f"📦 Khôi phục: {video_id}")
+            import datetime
+            now = datetime.datetime.now().isoformat()
             db.execute(
-                "INSERT INTO videos (id, source_url, source_platform, title, status, original_path) VALUES (?, ?, ?, ?, ?, ?)",
-                (video_id, "restored_url", "unknown", title, "downloaded", str(file_path))
+                "INSERT INTO videos (id, source_url, source_platform, title, status, original_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (video_id, "restored_url", "unknown", title, "downloaded", str(file_path), now, now)
             )
             restored_count += 1
                 
