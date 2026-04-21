@@ -1045,10 +1045,14 @@ async def api_mass_schedule(request: Request):
             # Calculate staggered time
             scheduled_time = base_time + timedelta(minutes=slot_index * interval_minutes)
 
+            # Fallback to original title if empty
+            final_caption = caption if caption.strip() else video.get("title", "")
+            final_hashtags = hashtags if hashtags.strip() else ""
+
             # AI Content Spinning: generate unique caption per page
-            post_caption = caption
-            post_hashtags = hashtags
-            if use_ai_spin and caption:
+            post_caption = final_caption
+            post_hashtags = final_hashtags
+            if use_ai_spin and final_caption:
                 try:
                     spin_result = await _spin_caption_for_page(
                         caption, page.get("page_name", ""),
