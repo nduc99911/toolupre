@@ -349,35 +349,51 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Chọn Video (có thể chọn nhiều)</label>
+                                <label class="form-label">1. Lọc video theo thư mục</label>
+                                <select class="form-select" id="mass-folder-filter" onchange="loadMassScheduleVideos()">
+                                    <option value="">📂 Tất cả video (Không lọc thư mục)</option>
+                                    <option value="none">📦 Video chưa phân loại</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <div
+                                    style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                    <label class="form-label" style="margin:0;">2. Chọn Video</label>
+                                    <label
+                                        style="font-size:12px; cursor:pointer; color:var(--accent-primary); display:flex; align-items:center; gap:4px;">
+                                        <input type="checkbox" id="mass-video-select-all"
+                                            onclick="toggleSelectAllMassVideos(this.checked)"> Chọn tất cả
+                                    </label>
+                                </div>
                                 <div id="mass-video-list"
-                                    style="max-height:200px;overflow-y:auto;background:var(--bg-tertiary);border-radius:var(--radius-md);padding:10px;">
+                                    style="max-height:220px;overflow-y:auto;background:var(--bg-tertiary);border-radius:var(--radius-md);padding:10px;border:1px solid var(--border-color);">
                                     <div style="color:var(--text-tertiary);font-size:12px;">Đang tải danh sách video...
                                     </div>
                                 </div>
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Chọn Facebook Pages (có thể chọn nhiều)</label>
+                                <div
+                                    style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                    <label class="form-label" style="margin:0;">3. Chọn Fanpage</label>
+                                    <label
+                                        style="font-size:12px; cursor:pointer; color:var(--accent-primary); display:flex; align-items:center; gap:4px;">
+                                        <input type="checkbox" id="mass-page-select-all"
+                                            onclick="toggleSelectAllMassPages(this.checked)"> Chọn tất cả
+                                    </label>
+                                </div>
                                 <div id="mass-page-list"
-                                    style="max-height:180px;overflow-y:auto;background:var(--bg-tertiary);border-radius:var(--radius-md);padding:10px;">
+                                    style="max-height:180px;overflow-y:auto;background:var(--bg-tertiary);border-radius:var(--radius-md);padding:10px;border:1px solid var(--border-color);">
                                     <div style="color:var(--text-tertiary);font-size:12px;">Đang tải danh sách pages...
                                     </div>
                                 </div>
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Caption mẫu</label>
+                                <label class="form-label">Caption mẫu (Có thể để trống nếu dùng AI Spin)</label>
                                 <textarea class="form-textarea" id="mass-caption"
                                     placeholder="Caption chung cho tất cả bài đăng..."></textarea>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Chọn video từ thư mục</label>
-                                <select class="form-select" id="mass-folder-filter" onchange="loadMassScheduleVideos()">
-                                    <option value="">📂 Tất cả video (Không lọc thư mục)</option>
-                                    <option value="none">📦 Video chưa phân loại</option>
-                                </select>
                             </div>
                         </div>
 

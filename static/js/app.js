@@ -105,6 +105,16 @@ function navigateTo(page) {
     document.getElementById('sidebar-overlay').classList.remove('active');
 }
 
+function toggleSelectAllMassVideos(checked) {
+    const list = document.querySelectorAll('.mass-video-cb');
+    list.forEach(cb => cb.checked = checked);
+}
+
+function toggleSelectAllMassPages(checked) {
+    const list = document.querySelectorAll('.mass-page-cb');
+    list.forEach(cb => cb.checked = checked);
+}
+
 // ═══════════════════════════════════════════
 // API HELPERS
 // ═══════════════════════════════════════════
@@ -1985,6 +1995,10 @@ async function loadMassScheduleData() {
 
 async function loadMassScheduleVideos() {
     try {
+        // Reset select all checkbox
+        const sa = document.getElementById('mass-video-select-all');
+        if (sa) sa.checked = false;
+
         const folderId = document.getElementById('mass-folder-filter')?.value || '';
         let url = '/api/videos?limit=200';
         if (folderId) url += `&folder_id=${folderId}`;
