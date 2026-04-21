@@ -11,9 +11,11 @@ const state = {
     videos: [],
     fbPages: [],
     scheduledPosts: [],
+    folders: [],
+    currentStatusFilter: 'all',
+    currentFolderFilter: '',
     processOptions: {},
     selectedStyle: 'viral',
-    selectedPageId: null,
     selectedPageId: null,
     pollIntervals: {},
     selectedVideos: new Set(),
@@ -429,13 +431,18 @@ async function refreshVideoStatuses() {
 // VIDEO LIBRARY
 // ═══════════════════════════════════════════
 async function loadVideos(statusFilter) {
+    if (statusFilter !== undefined) state.currentStatusFilter = statusFilter;
+    const folderFilter = document.getElementById('lib-folder-filter')?.value || '';
+
     try {
-        const url = statusFilter && statusFilter !== 'all'
-            ? `/api/videos?status=${statusFilter}`
-            : '/api/videos';
+        let url = '/api/videos?limit=200';
+        if (state.currentStatusFilter && state.currentStatusFilter !== 'all') url += `&status=${state.currentStatusFilter}`;
+        if (folderFilter) url += `&folder_id=${folderFilter}`;
+
         const data = await api(url);
         state.videos = data.videos || [];
         renderVideoGrid(state.videos);
+        loadFolders(); // Refresh folders count
     } catch (err) {
         console.error('Failed to load videos:', err);
     }
@@ -611,6 +618,94 @@ async function batchDeleteVideos() {
         updateLibraryBatchActions();
     } catch (err) {
         showToast('Không thể xóa video hàng loạt', 'error');
+    }
+}
+
+// ─── Folder Logic ───
+
+async function loadFolders() {
+    try {
+        const data = await api('/api/folders');
+        const folders = data.folders || [];
+        state.folders = folders;
+
+        // Update filters in Library and Mass Schedule
+        const libFilter = document.getElementById('lib-folder-filter');
+        const batchSelect = document.getElementById('batch-move-folder-select');
+        const massFilter = document.getElementById('mass-folder-filter');
+
+        const currentLibFilter = libFilter?.value;
+        const currentMassFilter = massFilter?.value;
+
+        const folderOptions = `
+            <option value="">📁 Tất cả thư mục</option>
+            <option value="none">📦 Chưa phân loại</option>
+            ${folders.map(f => `<option value="${f.id}">${f.name} (${f.video_count})</option>`).join('')}
+        `;
+
+        const moveOptions = `
+            <option value="">-- Chuyển vào --</option>
+            <option value="none">Xóa khỏi thư mục</option>
+            ${folders.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
+        `;
+
+        if (libFilter) {
+            libFilter.innerHTML = folderOptions;
+            libFilter.value = currentLibFilter || "";
+        }
+        if (batchSelect) {
+            batchSelect.innerHTML = moveOptions;
+        }
+        if (massFilter) {
+            massFilter.innerHTML = folderOptions.replace('📁 Tất cả thư mục', '📂 Tất cả video (Không lọc thư mục)').replace('📦 Chưa phân loại', '📦 Video chưa phân loại');
+            massFilter.value = currentMassFilter || "";
+        }
+    } catch (err) {
+        console.error('Failed to load folders:', err);
+    }
+}
+
+async function showCreateFolderModal() {
+    const name = prompt('Nhập tên thư mục mới:');
+    if (!name) return;
+
+    try {
+        await api('/api/folders', {
+            method: 'POST',
+            body: JSON.stringify({ name })
+        });
+        showToast('Đã tạo thư mục!', 'success');
+        loadFolders();
+    } catch (err) {
+        showToast('Lỗi tạo thư mục: ' + err.message, 'error');
+    }
+}
+
+async function batchMoveVideos() {
+    const folderId = document.getElementById('batch-move-folder-select').value;
+    if (folderId === undefined || folderId === "") {
+        showToast('Vui lòng chọn thư mục đích', 'warning');
+        return;
+    }
+
+    const videoIds = Array.from(state.selectedVideos);
+    if (videoIds.length === 0) return;
+
+    try {
+        const result = await api('/api/videos/batch-move', {
+            method: 'POST',
+            body: JSON.stringify({
+                video_ids: videoIds,
+                folder_id: folderId === 'none' ? null : folderId
+            })
+        });
+        showToast(result.message, 'success');
+        state.selectedVideos.clear();
+        loadVideos();
+        updateBatchBar();
+        updateLibraryBatchActions();
+    } catch (err) {
+        showToast('Lỗi chuyển thư mục: ' + err.message, 'error');
     }
 }
 
@@ -1837,24 +1932,8 @@ async function downloadSelectedProfileVideos() {
 
 async function loadMassScheduleData() {
     try {
-        // Load videos (downloaded or processed)
-        const videoData = await api('/api/videos?limit=100');
-        const videos = (videoData.videos || []).filter(v => ['downloaded', 'processed'].includes(v.status));
-
-        const videoList = document.getElementById('mass-video-list');
-        if (videos.length === 0) {
-            videoList.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;">Không có video nào sẵn sàng. Hãy tải và xử lý video trước.</div>';
-        } else {
-            videoList.innerHTML = videos.map(v => `
-                <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid var(--border-color);">
-                    <input type="checkbox" class="mass-video-cb" value="${v.id}">
-                    <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                        ${v.status === 'processed' ? '⚡' : '⬇️'} ${escapeHtml(v.title || v.id)} 
-                        <span style="color:var(--text-tertiary);">(${v.source_platform})</span>
-                    </span>
-                </label>
-            `).join('');
-        }
+        loadFolders();
+        await loadMassScheduleVideos();
 
         // Load pages
         const pageData = await api('/api/fb/pages');
@@ -1880,6 +1959,34 @@ async function loadMassScheduleData() {
 
     } catch (err) {
         showToast(`Lỗi tải dữ liệu: ${err.message}`, 'error');
+    }
+}
+
+async function loadMassScheduleVideos() {
+    try {
+        const folderId = document.getElementById('mass-folder-filter')?.value || '';
+        let url = '/api/videos?limit=200';
+        if (folderId) url += `&folder_id=${folderId}`;
+
+        const videoData = await api(url);
+        const videos = (videoData.videos || []).filter(v => ['downloaded', 'processed'].includes(v.status));
+
+        const videoList = document.getElementById('mass-video-list');
+        if (videos.length === 0) {
+            videoList.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;">Không có video nào trong mục đã chọn.</div>';
+        } else {
+            videoList.innerHTML = videos.map(v => `
+                <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px solid var(--border-color);">
+                    <input type="checkbox" class="mass-video-cb" value="${v.id}">
+                    <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        ${v.status === 'processed' ? '⚡' : '⬇️'} ${escapeHtml(v.title || v.id)} 
+                        <span style="color:var(--text-tertiary);">(${v.source_platform})</span>
+                    </span>
+                </label>
+            `).join('');
+        }
+    } catch (err) {
+        console.error('Load mass schedule videos failed:', err);
     }
 }
 

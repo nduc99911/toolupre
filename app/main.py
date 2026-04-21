@@ -223,9 +223,9 @@ async def api_video_info(request: Request):
 # ═══════════════════════════════════════════
 
 @app.get("/api/videos")
-async def api_list_videos(status: str = None, limit: int = 100):
-    """List all videos."""
-    videos = await db.get_all_videos(status=status, limit=limit)
+async def api_list_videos(status: str = None, folder_id: str = None, limit: int = 200):
+    """List all videos with status and folder filter."""
+    videos = await db.get_all_videos(status=status, folder_id=folder_id, limit=limit)
     return {"videos": videos, "count": len(videos)}
 
 
@@ -261,6 +261,43 @@ async def api_batch_delete_videos(request: Request):
         deleted_count += 1
         
     return {"success": True, "message": f"Đã xóa {deleted_count} video thành công"}
+
+@app.post("/api/videos/batch-move")
+async def api_batch_move_videos(request: Request):
+    """Move multiple videos to a folder."""
+    params = await request.json()
+    video_ids = params.get("video_ids", [])
+    folder_id = params.get("folder_id") # Can be uuid or None
+    
+    if not video_ids:
+        raise HTTPException(400, "No video IDs provided")
+        
+    count = await db.move_videos_to_folder(video_ids, folder_id)
+    return {"success": True, "message": f"Đã chuyển {count} video vào thư mục thành công"}
+
+# ─── Folders API ───
+
+@app.get("/api/folders")
+async def api_get_folders():
+    folders = await db.get_all_folders()
+    return {"folders": folders}
+
+@app.post("/api/folders")
+async def api_create_folder(request: Request):
+    import uuid
+    params = await request.json()
+    name = params.get("name")
+    if not name:
+        raise HTTPException(400, "Folder name is required")
+        
+    folder_id = str(uuid.uuid4())[:8]
+    folder = await db.create_folder(folder_id, name)
+    return folder
+
+@app.delete("/api/folders/{folder_id}")
+async def api_delete_folder(folder_id: str):
+    await db.delete_folder(folder_id)
+    return {"success": True}
 
 
 @app.get("/api/videos/{video_id}")

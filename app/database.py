@@ -29,8 +29,16 @@ CREATE TABLE IF NOT EXISTS videos (
     ai_description TEXT DEFAULT '',
     processing_options TEXT DEFAULT '{}',
     error_message TEXT DEFAULT '',
+    folder_id TEXT DEFAULT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS folders (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS fb_pages (
@@ -158,18 +166,31 @@ async def get_video(video_id: str) -> dict | None:
         await db.close()
 
 
-async def get_all_videos(status: str = None, limit: int = 100) -> list[dict]:
+async def get_all_videos(status: str = None, folder_id: str = None, limit: int = 200) -> list[dict]:
     db = await get_db()
     try:
+        query = "SELECT * FROM videos"
+        params = []
+        conditions = []
+        
         if status:
-            cursor = await db.execute(
-                "SELECT * FROM videos WHERE status = ? ORDER BY created_at DESC LIMIT ?",
-                (status, limit)
-            )
-        else:
-            cursor = await db.execute(
-                "SELECT * FROM videos ORDER BY created_at DESC LIMIT ?", (limit,)
-            )
+            conditions.append("status = ?")
+            params.append(status)
+            
+        if folder_id:
+            if folder_id == 'none':
+                conditions.append("folder_id IS NULL")
+            else:
+                conditions.append("folder_id = ?")
+                params.append(folder_id)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+            
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -197,6 +218,62 @@ async def delete_video(video_id: str) -> bool:
         await db.execute("DELETE FROM videos WHERE id = ?", (video_id,))
         await db.commit()
         return True
+    finally:
+        await db.close()
+
+# ─── Folder Management ───
+
+async def get_all_folders() -> list[dict]:
+    db = await get_db()
+    try:
+        # Get folders with video count
+        cursor = await db.execute("""
+            SELECT f.*, COUNT(v.id) as video_count 
+            FROM folders f 
+            LEFT JOIN videos v ON f.id = v.folder_id 
+            GROUP BY f.id 
+            ORDER BY f.name ASC
+        """)
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await db.close()
+
+async def create_folder(folder_id: str, name: str) -> dict:
+    now = datetime.utcnow().isoformat()
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO folders (id, name, created_at) VALUES (?, ?, ?)",
+            (folder_id, name, now)
+        )
+        await db.commit()
+        return {"id": folder_id, "name": name, "created_at": now}
+    finally:
+        await db.close()
+
+async def delete_folder(folder_id: str) -> bool:
+    db = await get_db()
+    try:
+        # Videos in this folder will have folder_id set to NULL due to ON DELETE SET NULL
+        await db.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+async def move_videos_to_folder(video_ids: list[str], folder_id: str | None) -> int:
+    db = await get_db()
+    try:
+        count = 0
+        for vid in video_ids:
+            await db.execute(
+                "UPDATE videos SET folder_id = ?, updated_at = ? WHERE id = ?",
+                (folder_id, datetime.utcnow().isoformat(), vid)
+            )
+            count += 1
+        await db.commit()
+        return count
     finally:
         await db.close()
 

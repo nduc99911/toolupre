@@ -373,859 +373,880 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Hashtags</label>
-                                <input type="text" class="form-input" id="mass-hashtags"
-                                    placeholder="#trending #viral #fyp">
+                                <label class="form-label">Chọn video từ thư mục</label>
+                                <select class="form-select" id="mass-folder-filter" onchange="loadMassScheduleVideos()">
+                                    <option value="">📂 Tất cả video (Không lọc thư mục)</option>
+                                    <option value="none">📦 Video chưa phân loại</option>
+                                </select>
                             </div>
+                        </div>
 
-                            <div class="form-group">
-                                <div class="toggle-group">
-                                    <input type="checkbox" class="toggle" id="mass-ai-spin" checked>
-                                    <div>
-                                        <div class="toggle-label">🤖 AI Content Spinning</div>
-                                        <div class="toggle-desc">AI viết lại caption khác nhau cho mỗi Page (tránh spam)
-                                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Hashtags</label>
+                            <input type="text" class="form-input" id="mass-hashtags"
+                                placeholder="#trending #viral #fyp">
+                        </div>
+
+                        <div class="form-group">
+                            <div class="toggle-group">
+                                <input type="checkbox" class="toggle" id="mass-ai-spin" checked>
+                                <div>
+                                    <div class="toggle-label">🤖 AI Content Spinning</div>
+                                    <div class="toggle-desc">AI viết lại caption khác nhau cho mỗi Page (tránh spam)
                                     </div>
                                 </div>
                             </div>
-
-                            <hr style="border-color:var(--border-color);margin:16px 0;">
-
-                            <div class="form-group">
-                                <label class="form-label">Thời gian bắt đầu đăng</label>
-                                <input type="datetime-local" class="form-input" id="mass-start-time">
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Chế độ giãn cách</label>
-                                <select class="form-select" id="mass-interval-preset" onchange="updateMassInterval()">
-                                    <option value="30">Cách nhau 30 phút (Chống Spam cơ bản)</option>
-                                    <option value="60">Cách nhau 1 tiếng</option>
-                                    <option value="120">Cách nhau 2 tiếng</option>
-                                    <option value="1440">Mỗi ngày 1 bài (cùng lúc bắt đầu)</option>
-                                    <option value="custom">Tùy chỉnh khoảng cách (phút)...</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group" id="group-custom-interval" style="display:none;">
-                                <label class="form-label">Khoảng cách giữa mỗi bài (phút)</label>
-                                <input type="number" class="form-input" id="mass-interval" value="30" min="5"
-                                    max="1440">
-                                <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">
-                                    💡 Khoảng cách tùy chỉnh. Nhập 1440 Nếu muốn xếp lịch 1 bài/ngày.
-                                </div>
-                            </div>
-
-
-                            <button class="btn btn-primary btn-lg" onclick="executeMassSchedule()" style="width:100%;">
-                                🚀 Tạo lịch đăng hàng loạt
-                            </button>
-                            <div id="mass-schedule-status" style="margin-top:16px;"></div>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📊</span> Tổng quan lịch đăng</div>
-                            </div>
-                            <div id="mass-schedule-preview"
-                                style="font-size:13px;line-height:1.8;color:var(--text-secondary);">
-                                <div style="background:var(--bg-tertiary);border-radius:var(--radius-md);padding:20px;">
-                                    <p><strong>Cách hoạt động:</strong></p>
-                                    <p>1. ✅ Chọn nhiều Video từ thư viện</p>
-                                    <p>2. ✅ Chọn nhiều Facebook Pages</p>
-                                    <p>3. ⏰ Đặt thời gian bắt đầu + khoảng cách</p>
-                                    <p>4. 🤖 AI tự spin caption cho từng Page</p>
-                                    <p>5. 🚀 Tool sẽ tự động "rải" bài đăng theo lịch</p>
-                                    <hr style="border-color:var(--border-color);margin:12px 0;">
-                                    <p><strong>Ví dụ:</strong></p>
-                                    <p>3 videos × 5 pages = <strong>15 bài đăng</strong></p>
-                                    <p>Bắt đầu 8:00, cách 30p → Kết thúc 15:30</p>
-                                </div>
-                            </div>
+                        <hr style="border-color:var(--border-color);margin:16px 0;">
 
-                            <div id="mass-schedule-result" style="margin-top:16px;display:none;">
-                                <div class="card-header">
-                                    <div class="card-title"><span class="icon">✅</span> Kết quả</div>
-                                </div>
-                                <div id="mass-result-list"></div>
+                        <div class="form-group">
+                            <label class="form-label">Thời gian bắt đầu đăng</label>
+                            <input type="datetime-local" class="form-input" id="mass-start-time">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Chế độ giãn cách</label>
+                            <select class="form-select" id="mass-interval-preset" onchange="updateMassInterval()">
+                                <option value="30">Cách nhau 30 phút (Chống Spam cơ bản)</option>
+                                <option value="60">Cách nhau 1 tiếng</option>
+                                <option value="120">Cách nhau 2 tiếng</option>
+                                <option value="1440">Mỗi ngày 1 bài (cùng lúc bắt đầu)</option>
+                                <option value="custom">Tùy chỉnh khoảng cách (phút)...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group" id="group-custom-interval" style="display:none;">
+                            <label class="form-label">Khoảng cách giữa mỗi bài (phút)</label>
+                            <input type="number" class="form-input" id="mass-interval" value="30" min="5" max="1440">
+                            <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">
+                                💡 Khoảng cách tùy chỉnh. Nhập 1440 Nếu muốn xếp lịch 1 bài/ngày.
                             </div>
+                        </div>
+
+
+                        <button class="btn btn-primary btn-lg" onclick="executeMassSchedule()" style="width:100%;">
+                            🚀 Tạo lịch đăng hàng loạt
+                        </button>
+                        <div id="mass-schedule-status" style="margin-top:16px;"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📊</span> Tổng quan lịch đăng</div>
+                        </div>
+                        <div id="mass-schedule-preview"
+                            style="font-size:13px;line-height:1.8;color:var(--text-secondary);">
+                            <div style="background:var(--bg-tertiary);border-radius:var(--radius-md);padding:20px;">
+                                <p><strong>Cách hoạt động:</strong></p>
+                                <p>1. ✅ Chọn nhiều Video từ thư viện</p>
+                                <p>2. ✅ Chọn nhiều Facebook Pages</p>
+                                <p>3. ⏰ Đặt thời gian bắt đầu + khoảng cách</p>
+                                <p>4. 🤖 AI tự spin caption cho từng Page</p>
+                                <p>5. 🚀 Tool sẽ tự động "rải" bài đăng theo lịch</p>
+                                <hr style="border-color:var(--border-color);margin:12px 0;">
+                                <p><strong>Ví dụ:</strong></p>
+                                <p>3 videos × 5 pages = <strong>15 bài đăng</strong></p>
+                                <p>Bắt đầu 8:00, cách 30p → Kết thúc 15:30</p>
+                            </div>
+                        </div>
+
+                        <div id="mass-schedule-result" style="margin-top:16px;display:none;">
+                            <div class="card-header">
+                                <div class="card-title"><span class="icon">✅</span> Kết quả</div>
+                            </div>
+                            <div id="mass-result-list"></div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- ═══════════ LIBRARY ═══════════ -->
-                <div class="page" id="page-library">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
-                        <div class="tabs" id="library-tabs">
-                            <button class="tab-btn active" onclick="filterVideos('all', this)">Tất cả</button>
-                            <button class="tab-btn" onclick="filterVideos('downloaded', this)">Đã tải</button>
-                            <button class="tab-btn" onclick="filterVideos('processed', this)">Đã xử lý</button>
-                            <button class="tab-btn" onclick="filterVideos('published', this)">Đã đăng</button>
-                            <button class="tab-btn" onclick="filterVideos('failed', this)">Lỗi</button>
-                        </div>
+            <!-- ═══════════ LIBRARY ═══════════ -->
+            <div class="page" id="page-library">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+                    <div class="tabs" id="library-tabs">
+                        <button class="tab-btn active" onclick="filterVideos('all', this)">Tất cả</button>
+                        <button class="tab-btn" onclick="filterVideos('downloaded', this)">Đã tải</button>
+                        <button class="tab-btn" onclick="filterVideos('processed', this)">Đã xử lý</button>
+                        <button class="tab-btn" onclick="filterVideos('published', this)">Đã đăng</button>
+                        <button class="tab-btn" onclick="filterVideos('failed', this)">Lỗi</button>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <select class="form-select form-select-sm" id="lib-folder-filter" onchange="loadVideos()"
+                            style="width:150px; background:rgba(255,255,255,0.05);">
+                            <option value="">📁 Tất cả thư mục</option>
+                            <option value="none">📂 Chưa phân loại</option>
+                        </select>
+                        <button class="btn btn-ghost btn-sm" onclick="showCreateFolderModal()">➕ Thư mục
+                            mới</button>
                         <button class="btn btn-ghost btn-sm" onclick="loadVideos()">🔄 Làm mới</button>
                     </div>
+                </div>
 
-                    <!-- Library Batch Actions -->
-                    <div id="library-batch-actions"
-                        style="margin-bottom: 20px; display: none; align-items: center; gap: 15px; padding: 10px 15px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid var(--border-color);">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="lib-select-all" onclick="toggleSelectAllLibrary(this.checked)"
-                                style="width: 20px; height: 20px;">
-                            <label for="lib-select-all" style="font-weight: 600; font-size: 14px; cursor: pointer;">Chọn
-                                tất cả</label>
-                        </div>
-                        <div style="flex: 1; font-size: 13px; color: var(--text-secondary);" id="lib-selected-count">Đã
-                            chọn 0 video</div>
-                        <button class="btn btn-ghost btn-sm" onclick="batchDeleteVideos()"
-                            style="color: var(--accent-danger); border-color: rgba(255,107,107,0.3);">🗑️ Xóa hàng
-                            loạt</button>
+                <!-- Library Batch Actions -->
+                <div id="library-batch-actions"
+                    style="margin-bottom: 20px; display: none; align-items: center; gap: 15px; padding: 10px 15px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="lib-select-all" onclick="toggleSelectAllLibrary(this.checked)"
+                            style="width: 20px; height: 20px;">
+                        <label for="lib-select-all" style="font-weight: 600; font-size: 14px; cursor: pointer;">Chọn
+                            tất cả</label>
                     </div>
-                    <div class="video-grid" id="video-grid">
-                        <div class="empty-state" style="grid-column: 1/-1;">
-                            <div class="empty-icon">🎬</div>
-                            <div class="empty-title">Thư viện trống</div>
-                            <div class="empty-desc">Tải video để bắt đầu</div>
+                    <div style="flex: 1; font-size: 13px; color: var(--text-secondary);" id="lib-selected-count">Đã chọn
+                        0 video</div>
+
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select class="form-select form-select-sm" id="batch-move-folder-select" style="width:140px;">
+                            <option value="">-- Chuyển vào --</option>
+                            <option value="none">Xóa khỏi thư mục</option>
+                        </select>
+                        <button class="btn btn-ghost btn-sm" onclick="batchMoveVideos()"
+                            style="color: var(--accent-primary);">📂 Di chuyển</button>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="batchDeleteVideos()"
+                        style="color: var(--accent-danger); border-color: rgba(255,107,107,0.3);">🗑️ Xóa hàng
+                        loạt</button>
+                </div>
+                <div class="video-grid" id="video-grid">
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <div class="empty-icon">🎬</div>
+                        <div class="empty-title">Thư viện trống</div>
+                        <div class="empty-desc">Tải video để bắt đầu</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ PROCESS ═══════════ -->
+            <div class="page" id="page-process">
+                <div class="card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">🎬</span> Chọn Video để xử lý</div>
+                    </div>
+                    <div class="form-group">
+                        <select class="form-select" id="process-video-select" onchange="showProcessPreview(this.value)">
+                            <option value="">-- Chọn video --</option>
+                        </select>
+                    </div>
+                    <div id="process-preview" style="display:none;">
+                        <div class="publish-preview">
+                            <video id="process-video-player" controls
+                                style="width:100%;max-height:250px;border-radius:8px;"></video>
                         </div>
                     </div>
                 </div>
 
-                <!-- ═══════════ PROCESS ═══════════ -->
-                <div class="page" id="page-process">
-                    <div class="card" style="margin-bottom: 24px;">
+                <div class="card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">⚡</span> Tùy chọn xử lý (Lách bản quyền)</div>
+                        <button class="btn btn-ghost btn-sm" onclick="resetProcessOptions()">🔄 Mặc định</button>
+                    </div>
+                    <div class="options-grid" id="process-options-grid"></div>
+                </div>
+
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <div style="font-size:14px; font-weight:600;">Sẵn sàng xử lý</div>
+                            <div style="font-size:12px; color:var(--text-tertiary);">Video sẽ được xử lý với các tùy
+                                chọn đã chọn</div>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn btn-primary btn-lg" onclick="processVideo()">
+                                ⚡ Xử lý Video
+                            </button>
+                            <button class="btn btn-secondary btn-lg" onclick="processAllVideos()">
+                                📦 Xử lý tất cả
+                            </button>
+                        </div>
+                    </div>
+                    <div id="process-status" style="margin-top: 16px;"></div>
+                    <div id="queue-status-container"></div>
+                </div>
+            </div>
+
+            <!-- ═══════════ AI REWRITE ═══════════ -->
+            <div class="page" id="page-ai">
+                <div class="two-col">
+                    <div class="card">
                         <div class="card-header">
-                            <div class="card-title"><span class="icon">🎬</span> Chọn Video để xử lý</div>
+                            <div class="card-title"><span class="icon">🤖</span> AI Viết lại Caption</div>
                         </div>
                         <div class="form-group">
-                            <select class="form-select" id="process-video-select"
-                                onchange="showProcessPreview(this.value)">
+                            <label class="form-label">Phong cách</label>
+                            <div class="style-grid" id="ai-style-grid">
+                                <div class="style-card active" data-style="viral" onclick="selectStyle(this)">
+                                    <div class="style-icon">🔥</div>
+                                    <div class="style-name">Viral</div>
+                                </div>
+                                <div class="style-card" data-style="professional" onclick="selectStyle(this)">
+                                    <div class="style-icon">💼</div>
+                                    <div class="style-name">Chuyên nghiệp</div>
+                                </div>
+                                <div class="style-card" data-style="funny" onclick="selectStyle(this)">
+                                    <div class="style-icon">😂</div>
+                                    <div class="style-name">Hài hước</div>
+                                </div>
+                                <div class="style-card" data-style="storytelling" onclick="selectStyle(this)">
+                                    <div class="style-icon">📖</div>
+                                    <div class="style-name">Kể chuyện</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Nội dung gốc / Mô tả video</label>
+                            <textarea class="form-textarea" id="ai-input"
+                                placeholder="Nhập nội dung hoặc mô tả video cần viết lại..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Niche / Chủ đề (tùy chọn)</label>
+                            <input type="text" class="form-input" id="ai-niche"
+                                placeholder="VD: motivation, cooking, funny...">
+                        </div>
+                        <button class="btn btn-primary btn-lg" onclick="aiRewrite()" style="width:100%;"
+                            id="btn-ai-rewrite">
+                            🤖 Viết lại bằng AI
+                        </button>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">✨</span> Kết quả AI</div>
+                            <button class="btn btn-ghost btn-sm" onclick="copyAIResult()">📋 Copy</button>
+                        </div>
+                        <div id="ai-result">
+                            <div class="empty-state">
+                                <div class="empty-icon">🤖</div>
+                                <div class="empty-title">Chưa có kết quả</div>
+                                <div class="empty-desc">Nhập nội dung và nhấn "Viết lại bằng AI"</div>
+                            </div>
+                        </div>
+
+                        <hr style="border-color: var(--border-color); margin: 20px 0;">
+
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">#️⃣</span> Tạo Hashtag</div>
+                        </div>
+                        <div class="form-group">
+                            <input type="text" class="form-input" id="hashtag-topic"
+                                placeholder="Nhập chủ đề để tạo hashtag...">
+                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="generateHashtags()">
+                            #️⃣ Tạo Hashtag
+                        </button>
+                        <div id="hashtag-result" style="margin-top: 12px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ PUBLISH ═══════════ -->
+            <div class="page" id="page-publish">
+                <div class="two-col">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📤</span> Đăng / Lên lịch Video</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Chọn Video</label>
+                            <select class="form-select" id="publish-video-select"
+                                onchange="showPublishPreview(this.value)">
+                                <option value="">-- Chọn video đã xử lý --</option>
+                            </select>
+                        </div>
+
+                        <div id="publish-preview-area" style="display:none;margin-bottom:16px;">
+                            <div class="publish-preview">
+                                <video id="publish-video-player" controls
+                                    style="width:100%;max-height:200px;border-radius:8px;"></video>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Chọn Facebook Page</label>
+                            <div id="page-select-list"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Caption</label>
+                            <textarea class="form-textarea" id="publish-caption"
+                                placeholder="Nhập caption cho bài đăng..."></textarea>
+                            <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="aiGenerateCaption()">
+                                🤖 AI tạo caption
+                            </button>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Hashtags</label>
+                            <input type="text" class="form-input" id="publish-hashtags"
+                                placeholder="#trending #viral #fyp">
+                        </div>
+
+                        <div class="form-group">
+                            <div class="toggle-group">
+                                <input type="checkbox" class="toggle" id="schedule-toggle" onchange="toggleSchedule()">
+                                <div>
+                                    <div class="toggle-label">Lên lịch đăng</div>
+                                    <div class="toggle-desc">Chọn thời gian đăng bài tự động</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="schedule-time-group" style="display:none;">
+                            <label class="form-label">Thời gian đăng</label>
+                            <input type="datetime-local" class="form-input" id="schedule-datetime">
+                        </div>
+
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn btn-primary btn-lg" onclick="publishOrSchedule()" style="flex:1;">
+                                📤 Đăng ngay
+                            </button>
+                        </div>
+                        <div id="publish-status" style="margin-top: 16px;"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📋</span> Hướng dẫn nhanh</div>
+                        </div>
+                        <div style="font-size:13px; line-height:1.8; color:var(--text-secondary);">
+                            <p><strong>1. Tải video</strong> từ TikTok, Douyin, Facebook</p>
+                            <p><strong>2. Xử lý video</strong> bằng FFmpeg (flip, đổi tốc độ, thêm noise...)</p>
+                            <p><strong>3. AI viết lại</strong> caption và hashtag</p>
+                            <p><strong>4. Đăng/Lên lịch</strong> lên Facebook Page</p>
+                            <hr style="border-color: var(--border-color); margin: 16px 0;">
+                            <p style="color:var(--accent-warning);">⚠️ <strong>Lưu ý:</strong></p>
+                            <p>• Cần Page Access Token có quyền <code>pages_manage_posts</code> và
+                                <code>pages_read_engagement</code>
+                            </p>
+                            <p>• Video phải nhỏ hơn 1GB để upload trực tiếp</p>
+                            <p>• Lên lịch phải cách hiện tại ít nhất 10 phút</p>
+                            <p>• Facebook có thể giới hạn API nếu đăng quá nhiều</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ SCHEDULE ═══════════ -->
+            <div class="page" id="page-schedule">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">📅</span> Lịch đăng bài</div>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="retryFailedPosts()"
+                                style="color: var(--accent-warning); border-color: var(--accent-warning);">🔄 Thử
+                                lại bài lỗi</button>
+                            <button class="btn btn-ghost btn-sm" onclick="loadSchedule()">🔄 Làm mới</button>
+                        </div>
+                    </div>
+                    <div class="schedule-list" id="schedule-list">
+                        <div class="empty-state">
+                            <div class="empty-icon">📅</div>
+                            <div class="empty-title">Chưa có bài nào được lên lịch</div>
+                            <div class="empty-desc">Đi tới "Đăng / Lên lịch" để tạo bài đăng mới</div>
+                            <button class="btn btn-primary" onclick="navigateTo('publish')">📤 Tạo bài đăng</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ AFFILIATE ═══════════ -->
+            <div class="page" id="page-affiliate">
+                <div class="two-col">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🔗</span> Affiliate Caption Generator</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Chọn Video</label>
+                            <select class="form-select" id="aff-video-select" onchange="loadAffVideoInfo(this.value)">
                                 <option value="">-- Chọn video --</option>
                             </select>
                         </div>
-                        <div id="process-preview" style="display:none;">
-                            <div class="publish-preview">
-                                <video id="process-video-player" controls
-                                    style="width:100%;max-height:250px;border-radius:8px;"></video>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div class="card" style="margin-bottom: 24px;">
-                        <div class="card-header">
-                            <div class="card-title"><span class="icon">⚡</span> Tùy chọn xử lý (Lách bản quyền)</div>
-                            <button class="btn btn-ghost btn-sm" onclick="resetProcessOptions()">🔄 Mặc định</button>
+                        <div class="form-group">
+                            <label class="form-label">🛒 Link sản phẩm Affiliate</label>
+                            <input type="text" class="form-input" id="aff-product-link"
+                                placeholder="https://shope.ee/xxxxx hoặc link TikTok Shop, Lazada...">
                         </div>
-                        <div class="options-grid" id="process-options-grid"></div>
+
+                        <div class="form-group">
+                            <label class="form-label">Từ khóa sản phẩm</label>
+                            <input type="text" class="form-input" id="aff-keywords"
+                                placeholder="kem chống nắng, serum vitamin C, máy lọc không khí...">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Phong cách viết</label>
+                            <select class="form-select" id="aff-style">
+                                <option value="soft_sell">🧑‍💼 Soft Sell - Chia sẻ trải nghiệm tự nhiên</option>
+                                <option value="hard_sell">🔥 Hard Sell - Bán hàng trực tiếp (FOMO)</option>
+                                <option value="review">📝 Review - Đánh giá sản phẩm chân thực</option>
+                                <option value="unboxing">📦 Unboxing - Bóc hàng hào hứng</option>
+                            </select>
+                        </div>
+
+                        <button class="btn btn-primary btn-lg" onclick="generateAffiliateCaption()" style="width:100%;"
+                            id="btn-gen-aff">
+                            🤖 AI tạo Caption Affiliate
+                        </button>
+                        <div id="aff-status" style="margin-top:12px;"></div>
                     </div>
 
                     <div class="card">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div>
-                                <div style="font-size:14px; font-weight:600;">Sẵn sàng xử lý</div>
-                                <div style="font-size:12px; color:var(--text-tertiary);">Video sẽ được xử lý với các tùy
-                                    chọn đã chọn</div>
-                            </div>
-                            <div style="display:flex; gap:10px;">
-                                <button class="btn btn-primary btn-lg" onclick="processVideo()">
-                                    ⚡ Xử lý Video
-                                </button>
-                                <button class="btn btn-secondary btn-lg" onclick="processAllVideos()">
-                                    📦 Xử lý tất cả
-                                </button>
-                            </div>
-                        </div>
-                        <div id="process-status" style="margin-top: 16px;"></div>
-                        <div id="queue-status-container"></div>
-                    </div>
-                </div>
-
-                <!-- ═══════════ AI REWRITE ═══════════ -->
-                <div class="page" id="page-ai">
-                    <div class="two-col">
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">🤖</span> AI Viết lại Caption</div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Phong cách</label>
-                                <div class="style-grid" id="ai-style-grid">
-                                    <div class="style-card active" data-style="viral" onclick="selectStyle(this)">
-                                        <div class="style-icon">🔥</div>
-                                        <div class="style-name">Viral</div>
-                                    </div>
-                                    <div class="style-card" data-style="professional" onclick="selectStyle(this)">
-                                        <div class="style-icon">💼</div>
-                                        <div class="style-name">Chuyên nghiệp</div>
-                                    </div>
-                                    <div class="style-card" data-style="funny" onclick="selectStyle(this)">
-                                        <div class="style-icon">😂</div>
-                                        <div class="style-name">Hài hước</div>
-                                    </div>
-                                    <div class="style-card" data-style="storytelling" onclick="selectStyle(this)">
-                                        <div class="style-icon">📖</div>
-                                        <div class="style-name">Kể chuyện</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Nội dung gốc / Mô tả video</label>
-                                <textarea class="form-textarea" id="ai-input"
-                                    placeholder="Nhập nội dung hoặc mô tả video cần viết lại..."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Niche / Chủ đề (tùy chọn)</label>
-                                <input type="text" class="form-input" id="ai-niche"
-                                    placeholder="VD: motivation, cooking, funny...">
-                            </div>
-                            <button class="btn btn-primary btn-lg" onclick="aiRewrite()" style="width:100%;"
-                                id="btn-ai-rewrite">
-                                🤖 Viết lại bằng AI
-                            </button>
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📋</span> Kết quả AI</div>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">✨</span> Kết quả AI</div>
-                                <button class="btn btn-ghost btn-sm" onclick="copyAIResult()">📋 Copy</button>
-                            </div>
-                            <div id="ai-result">
-                                <div class="empty-state">
-                                    <div class="empty-icon">🤖</div>
-                                    <div class="empty-title">Chưa có kết quả</div>
-                                    <div class="empty-desc">Nhập nội dung và nhấn "Viết lại bằng AI"</div>
-                                </div>
-                            </div>
-
-                            <hr style="border-color: var(--border-color); margin: 20px 0;">
-
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">#️⃣</span> Tạo Hashtag</div>
-                            </div>
+                        <div id="aff-result" style="display:none;">
                             <div class="form-group">
-                                <input type="text" class="form-input" id="hashtag-topic"
-                                    placeholder="Nhập chủ đề để tạo hashtag...">
-                            </div>
-                            <button class="btn btn-secondary btn-sm" onclick="generateHashtags()">
-                                #️⃣ Tạo Hashtag
-                            </button>
-                            <div id="hashtag-result" style="margin-top: 12px;"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══════════ PUBLISH ═══════════ -->
-                <div class="page" id="page-publish">
-                    <div class="two-col">
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📤</span> Đăng / Lên lịch Video</div>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Chọn Video</label>
-                                <select class="form-select" id="publish-video-select"
-                                    onchange="showPublishPreview(this.value)">
-                                    <option value="">-- Chọn video đã xử lý --</option>
-                                </select>
-                            </div>
-
-                            <div id="publish-preview-area" style="display:none;margin-bottom:16px;">
-                                <div class="publish-preview">
-                                    <video id="publish-video-player" controls
-                                        style="width:100%;max-height:200px;border-radius:8px;"></video>
-                                </div>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Chọn Facebook Page</label>
-                                <div id="page-select-list"></div>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Caption</label>
-                                <textarea class="form-textarea" id="publish-caption"
-                                    placeholder="Nhập caption cho bài đăng..."></textarea>
+                                <label class="form-label">📝 Caption (copy để dùng)</label>
+                                <textarea class="form-textarea" id="aff-result-caption" readonly
+                                    style="min-height:120px;font-size:13px;"></textarea>
                                 <button class="btn btn-ghost btn-sm" style="margin-top:6px;"
-                                    onclick="aiGenerateCaption()">
-                                    🤖 AI tạo caption
-                                </button>
+                                    onclick="copyToClipboard('aff-result-caption')">📋 Copy Caption</button>
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Hashtags</label>
-                                <input type="text" class="form-input" id="publish-hashtags"
-                                    placeholder="#trending #viral #fyp">
+                                <label class="form-label">💬 Comment đầu tiên (chèn link)</label>
+                                <textarea class="form-textarea" id="aff-result-comment" readonly
+                                    style="min-height:80px;font-size:13px;"></textarea>
+                                <button class="btn btn-ghost btn-sm" style="margin-top:6px;"
+                                    onclick="copyToClipboard('aff-result-comment')">📋 Copy Comment</button>
                             </div>
 
                             <div class="form-group">
-                                <div class="toggle-group">
-                                    <input type="checkbox" class="toggle" id="schedule-toggle"
-                                        onchange="toggleSchedule()">
-                                    <div>
-                                        <div class="toggle-label">Lên lịch đăng</div>
-                                        <div class="toggle-desc">Chọn thời gian đăng bài tự động</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="form-group" id="schedule-time-group" style="display:none;">
-                                <label class="form-label">Thời gian đăng</label>
-                                <input type="datetime-local" class="form-input" id="schedule-datetime">
-                            </div>
-
-                            <div style="display:flex; gap:10px;">
-                                <button class="btn btn-primary btn-lg" onclick="publishOrSchedule()" style="flex:1;">
-                                    📤 Đăng ngay
-                                </button>
-                            </div>
-                            <div id="publish-status" style="margin-top: 16px;"></div>
-                        </div>
-
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📋</span> Hướng dẫn nhanh</div>
-                            </div>
-                            <div style="font-size:13px; line-height:1.8; color:var(--text-secondary);">
-                                <p><strong>1. Tải video</strong> từ TikTok, Douyin, Facebook</p>
-                                <p><strong>2. Xử lý video</strong> bằng FFmpeg (flip, đổi tốc độ, thêm noise...)</p>
-                                <p><strong>3. AI viết lại</strong> caption và hashtag</p>
-                                <p><strong>4. Đăng/Lên lịch</strong> lên Facebook Page</p>
-                                <hr style="border-color: var(--border-color); margin: 16px 0;">
-                                <p style="color:var(--accent-warning);">⚠️ <strong>Lưu ý:</strong></p>
-                                <p>• Cần Page Access Token có quyền <code>pages_manage_posts</code> và
-                                    <code>pages_read_engagement</code>
-                                </p>
-                                <p>• Video phải nhỏ hơn 1GB để upload trực tiếp</p>
-                                <p>• Lên lịch phải cách hiện tại ít nhất 10 phút</p>
-                                <p>• Facebook có thể giới hạn API nếu đăng quá nhiều</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══════════ SCHEDULE ═══════════ -->
-                <div class="page" id="page-schedule">
-                    <div class="card">
-                        <div class="card-header">
-                            <div class="card-title"><span class="icon">📅</span> Lịch đăng bài</div>
-                            <div style="display:flex; gap:8px;">
-                                <button class="btn btn-secondary btn-sm" onclick="retryFailedPosts()"
-                                    style="color: var(--accent-warning); border-color: var(--accent-warning);">🔄 Thử
-                                    lại bài lỗi</button>
-                                <button class="btn btn-ghost btn-sm" onclick="loadSchedule()">🔄 Làm mới</button>
-                            </div>
-                        </div>
-                        <div class="schedule-list" id="schedule-list">
-                            <div class="empty-state">
-                                <div class="empty-icon">📅</div>
-                                <div class="empty-title">Chưa có bài nào được lên lịch</div>
-                                <div class="empty-desc">Đi tới "Đăng / Lên lịch" để tạo bài đăng mới</div>
-                                <button class="btn btn-primary" onclick="navigateTo('publish')">📤 Tạo bài đăng</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══════════ AFFILIATE ═══════════ -->
-                <div class="page" id="page-affiliate">
-                    <div class="two-col">
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">🔗</span> Affiliate Caption Generator</div>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Chọn Video</label>
-                                <select class="form-select" id="aff-video-select"
-                                    onchange="loadAffVideoInfo(this.value)">
-                                    <option value="">-- Chọn video --</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">🛒 Link sản phẩm Affiliate</label>
-                                <input type="text" class="form-input" id="aff-product-link"
-                                    placeholder="https://shope.ee/xxxxx hoặc link TikTok Shop, Lazada...">
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Từ khóa sản phẩm</label>
-                                <input type="text" class="form-input" id="aff-keywords"
-                                    placeholder="kem chống nắng, serum vitamin C, máy lọc không khí...">
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Phong cách viết</label>
-                                <select class="form-select" id="aff-style">
-                                    <option value="soft_sell">🧑‍💼 Soft Sell - Chia sẻ trải nghiệm tự nhiên</option>
-                                    <option value="hard_sell">🔥 Hard Sell - Bán hàng trực tiếp (FOMO)</option>
-                                    <option value="review">📝 Review - Đánh giá sản phẩm chân thực</option>
-                                    <option value="unboxing">📦 Unboxing - Bóc hàng hào hứng</option>
-                                </select>
-                            </div>
-
-                            <button class="btn btn-primary btn-lg" onclick="generateAffiliateCaption()"
-                                style="width:100%;" id="btn-gen-aff">
-                                🤖 AI tạo Caption Affiliate
-                            </button>
-                            <div id="aff-status" style="margin-top:12px;"></div>
-                        </div>
-
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📋</span> Kết quả AI</div>
-                            </div>
-
-                            <div id="aff-result" style="display:none;">
-                                <div class="form-group">
-                                    <label class="form-label">📝 Caption (copy để dùng)</label>
-                                    <textarea class="form-textarea" id="aff-result-caption" readonly
-                                        style="min-height:120px;font-size:13px;"></textarea>
-                                    <button class="btn btn-ghost btn-sm" style="margin-top:6px;"
-                                        onclick="copyToClipboard('aff-result-caption')">📋 Copy Caption</button>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label">💬 Comment đầu tiên (chèn link)</label>
-                                    <textarea class="form-textarea" id="aff-result-comment" readonly
-                                        style="min-height:80px;font-size:13px;"></textarea>
-                                    <button class="btn btn-ghost btn-sm" style="margin-top:6px;"
-                                        onclick="copyToClipboard('aff-result-comment')">📋 Copy Comment</button>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label">🏷️ Hashtags</label>
-                                    <div id="aff-result-hashtags" style="font-size:13px;color:var(--accent-primary);">
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label">📢 Call-to-Action</label>
-                                    <div id="aff-result-cta"
-                                        style="font-size:14px;font-weight:600;color:var(--accent-warning);padding:10px;background:var(--bg-tertiary);border-radius:var(--radius-md);">
-                                    </div>
-                                </div>
-
-                                <button class="btn btn-primary" onclick="useAffCaptionForPublish()"
-                                    style="width:100%;margin-top:10px;">
-                                    📤 Dùng caption này để đăng bài
-                                </button>
-                            </div>
-
-                            <div id="aff-empty" style="padding:40px;text-align:center;color:var(--text-tertiary);">
-                                <div style="font-size:40px;margin-bottom:12px;">🔗</div>
-                                <div style="font-size:14px;font-weight:500;">Tạo caption bán hàng bằng AI</div>
-                                <div style="font-size:12px;margin-top:6px;">Hỗ trợ: Shopee, TikTok Shop, Lazada</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══════════ AUTO SEEDING ═══════════ -->
-                <div class="page" id="page-seeding">
-                    <!-- Stats Row -->
-                    <div class="stats-grid" id="seeding-stats-grid" style="grid-template-columns: repeat(4, 1fr);">
-                        <div class="stat-card">
-                            <div class="stat-icon">👥</div>
-                            <div class="stat-value" id="seed-stat-accounts">0</div>
-                            <div class="stat-label">Tài khoản Active</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">⏳</div>
-                            <div class="stat-value" id="seed-stat-pending">0</div>
-                            <div class="stat-label">Đang chờ</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">✅</div>
-                            <div class="stat-value" id="seed-stat-completed">0</div>
-                            <div class="stat-label">Đã thực hiện</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">📊</div>
-                            <div class="stat-value" id="seed-stat-today">0</div>
-                            <div class="stat-label">Hôm nay</div>
-                        </div>
-                    </div>
-
-                    <div class="two-col" style="margin-top:20px;">
-                        <!-- LEFT: Account Management -->
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">👥</span> Tài khoản Seeding (Via/Clone)</div>
-                                <button class="btn btn-ghost btn-sm" onclick="loadSeedingAccounts()">🔄 Làm mới</button>
-                            </div>
-
-                            <!-- Add Account Form -->
-                            <div
-                                style="background:var(--bg-tertiary);border-radius:var(--radius-md);padding:14px;margin-bottom:16px;">
-                                <div class="form-group" style="margin-bottom:8px;">
-                                    <label class="form-label">Tên hiển thị</label>
-                                    <input type="text" class="form-input" id="seed-acc-name"
-                                        placeholder="Tên Via/Clone (để trống = tự lấy)">
-                                </div>
-                                <div class="form-group" style="margin-bottom:8px;">
-                                    <label class="form-label">Access Token</label>
-                                    <input type="text" class="form-input" id="seed-acc-token"
-                                        placeholder="Paste Facebook User Access Token...">
-                                </div>
-                                <div style="display:flex;gap:8px;">
-                                    <select class="form-select" id="seed-acc-type" style="width:120px;">
-                                        <option value="clone">Clone</option>
-                                        <option value="via">Via</option>
-                                        <option value="personal">Cá nhân</option>
-                                    </select>
-                                    <input type="number" class="form-input" id="seed-acc-limit" value="50" min="5"
-                                        max="200" style="width:80px;" title="Giới hạn/ngày">
-                                    <button class="btn btn-primary" onclick="addSeedingAccount()" style="flex:1;">➕ Thêm
-                                        tài khoản</button>
-                                </div>
-                            </div>
-
-                            <!-- Account List -->
-                            <div id="seeding-account-list" style="max-height:350px;overflow-y:auto;">
-                                <div class="empty-state">
-                                    <div class="empty-icon">👥</div>
-                                    <div class="empty-title">Chưa có tài khoản seeding</div>
-                                    <div class="empty-desc">Thêm Via/Clone để bắt đầu auto seeding</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- RIGHT: Create Seeding Task -->
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">🎯</span> Tạo Seeding cho bài đăng</div>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Facebook Post ID</label>
-                                <input type="text" class="form-input" id="seed-post-id"
-                                    placeholder="VD: 123456789_987654321 (lấy từ URL bài đăng)">
-                                <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">
-                                    💡 Nhấn vào bài đăng → Copy ID từ URL (phần sau /posts/ hoặc ?id=)
+                                <label class="form-label">🏷️ Hashtags</label>
+                                <div id="aff-result-hashtags" style="font-size:13px;color:var(--accent-primary);">
                                 </div>
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Tên Page (để ghi nhớ)</label>
-                                <input type="text" class="form-input" id="seed-page-name" placeholder="Tên Page...">
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Tác vụ seeding</label>
-                                <div style="display:flex;flex-direction:column;gap:8px;">
-                                    <div class="toggle-group">
-                                        <input type="checkbox" class="toggle" id="seed-action-like" checked>
-                                        <div>
-                                            <div class="toggle-label">👍 Auto Like</div>
-                                            <div class="toggle-desc">Tự động like bằng tất cả tài khoản</div>
-                                        </div>
-                                    </div>
-                                    <div class="toggle-group">
-                                        <input type="checkbox" class="toggle" id="seed-action-comment" checked>
-                                        <div>
-                                            <div class="toggle-label">💬 Auto Comment</div>
-                                            <div class="toggle-desc">Comment ngẫu nhiên từ kho mẫu (khen, hỏi, tương
-                                                tác)</div>
-                                        </div>
-                                    </div>
-                                    <div class="toggle-group">
-                                        <input type="checkbox" class="toggle" id="seed-action-share">
-                                        <div>
-                                            <div class="toggle-label">📤 Auto Share</div>
-                                            <div class="toggle-desc">Chia sẻ bài đăng lên tường cá nhân</div>
-                                        </div>
-                                    </div>
+                                <label class="form-label">📢 Call-to-Action</label>
+                                <div id="aff-result-cta"
+                                    style="font-size:14px;font-weight:600;color:var(--accent-warning);padding:10px;background:var(--bg-tertiary);border-radius:var(--radius-md);">
                                 </div>
                             </div>
 
-                            <div style="display:flex;gap:10px;">
-                                <div class="form-group" style="flex:1;">
-                                    <label class="form-label">Delay tối thiểu (giây)</label>
-                                    <input type="number" class="form-input" id="seed-delay-min" value="30" min="10">
-                                </div>
-                                <div class="form-group" style="flex:1;">
-                                    <label class="form-label">Delay tối đa (giây)</label>
-                                    <input type="number" class="form-input" id="seed-delay-max" value="180" min="30">
-                                </div>
-                            </div>
-
-                            <button class="btn btn-primary btn-lg" onclick="createSeedingPlan()" style="width:100%;">
-                                🎯 Tạo kế hoạch Seeding
-                            </button>
-                            <div id="seeding-plan-status" style="margin-top:12px;"></div>
-                        </div>
-                    </div>
-
-                    <!-- Task History -->
-                    <div class="card" style="margin-top:20px;">
-                        <div class="card-header">
-                            <div class="card-title"><span class="icon">📋</span> Lịch sử Seeding</div>
-                            <button class="btn btn-ghost btn-sm" onclick="loadSeedingTasks()">🔄 Làm mới</button>
-                        </div>
-                        <div id="seeding-task-list" style="max-height:400px;overflow-y:auto;">
-                            <div class="empty-state">
-                                <div class="empty-icon">📋</div>
-                                <div class="empty-title">Chưa có tác vụ seeding nào</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══════════ ANALYTICS (SO9 Style) ═══════════ -->
-                <div class="page" id="page-analytics">
-                    <div class="card">
-                        <div class="card-header">
-                            <div class="card-title"><span class="icon">📊</span> Thống kê chuyên sâu toàn bộ Pages</div>
-                            <button class="btn btn-primary btn-sm" onclick="loadAnalyticsPage()">🔄 Cập nhật dữ liệu mới
-                                nhất</button>
-                        </div>
-
-                        <!-- Analytics Hero Stats -->
-                        <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
-                            <div class="stat-card">
-                                <div class="stat-icon" style="color:#00b894;">👥</div>
-                                <div class="stat-value" id="ana-total-fans">0</div>
-                                <div class="stat-label">Tổng Followers</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon" style="color:#6c5ce7;">🔥</div>
-                                <div class="stat-value" id="ana-total-engagement">0</div>
-                                <div class="stat-label">Tổng Tương tác</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon" style="color:#fdcb6e;">⚡</div>
-                                <div class="stat-value" id="ana-avg-engagement">0</div>
-                                <div class="stat-label">Tương tác trung bình</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon" style="color:#00cec9;">📹</div>
-                                <div class="stat-value" id="ana-total-posts">0</div>
-                                <div class="stat-label">Bài viết phân tích</div>
-                            </div>
-                        </div>
-
-                        <!-- Charts Row -->
-                        <div class="two-col" style="margin-bottom: 24px;">
-                            <div class="card" style="background: var(--bg-secondary);">
-                                <div class="card-header">
-                                    <div class="card-title">Tỷ lệ tương tác theo Page</div>
-                                </div>
-                                <div style="height: 300px;"><canvas id="chart-ana-engagement"></canvas></div>
-                            </div>
-                            <div class="card" style="background: var(--bg-secondary);">
-                                <div class="card-header">
-                                    <div class="card-title">Phân bổ Followers</div>
-                                </div>
-                                <div style="height: 300px;"><canvas id="chart-ana-fans"></canvas></div>
-                            </div>
-                        </div>
-
-                        <!-- Comparison Table -->
-                        <div class="card-header">
-                            <div class="card-title"><span class="icon">🏆</span> Bảng xếp hạng hiệu suất Pages</div>
-                        </div>
-                        <div class="table-wrapper">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Rank</th>
-                                        <th>Fanpage</th>
-                                        <th>Followers</th>
-                                        <th>Tương tác (10 bài gần nhất)</th>
-                                        <th>Trung bình/Bài</th>
-                                        <th>Thao tác</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="analytics-table-body">
-                                    <!-- Dynamic content -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══════════ FB PAGES ═══════════ -->
-                <div class="page" id="page-pages">
-                    <div class="two-col">
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">📘</span> Facebook Pages</div>
-                                <button class="btn btn-ghost btn-sm" onclick="loadFBPages()">🔄 Làm mới</button>
-                            </div>
-
-                            <!-- Login Status -->
-                            <div id="fb-login-status" style="margin-bottom:20px;">
-                                <div
-                                    style="background:var(--bg-tertiary);border-radius:var(--radius-md);padding:16px;display:flex;align-items:center;gap:14px;">
-                                    <div
-                                        style="width:42px;height:42px;background:linear-gradient(135deg,#1877F2,#42b72a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
-                                        📘</div>
-                                    <div style="flex:1;">
-                                        <div style="font-size:13px;font-weight:600;" id="fb-login-user">Chưa đăng nhập
-                                            Facebook</div>
-                                        <div style="font-size:11px;color:var(--text-tertiary);" id="fb-login-detail">
-                                            Đăng nhập để tự động lấy danh sách Pages</div>
-                                    </div>
-                                    <button class="btn btn-primary" onclick="loginFacebook()" id="btn-fb-login"
-                                        style="background:linear-gradient(135deg,#1877F2,#42b72a);box-shadow:0 4px 15px rgba(24,119,242,0.3);">
-                                        🔐 Đăng nhập Facebook
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Pages List -->
-                            <div id="fb-pages-list">
-                                <div class="empty-state">
-                                    <div class="empty-icon">📘</div>
-                                    <div class="empty-title">Chưa có Page nào</div>
-                                    <div class="empty-desc">Nhấn "Đăng nhập Facebook" để bắt đầu</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="card">
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">🔧</span> Thêm Page thủ công</div>
-                            </div>
-
-                            <div style="margin-bottom:20px;">
-                                <div
-                                    style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px;line-height:1.6;">
-                                    💡 Nếu không dùng OAuth login, bạn có thể dán token thủ công từ
-                                    <a href="https://developers.facebook.com/tools/explorer/" target="_blank">Graph API
-                                        Explorer</a>
-                                </div>
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label">Page Access Token</label>
-                                <textarea class="form-textarea" id="page-token-input"
-                                    placeholder="Dán Page Access Token vào đây..."
-                                    style="min-height:80px;font-family:monospace;font-size:11px;"></textarea>
-                            </div>
-                            <button class="btn btn-primary" onclick="addFBPage()" style="width:100%;">
-                                ➕ Thêm Page
-                            </button>
-
-                            <hr style="border-color: var(--border-color); margin: 24px 0;">
-
-                            <div class="card-header">
-                                <div class="card-title"><span class="icon">👤</span> Import từ User Token</div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">User Access Token</label>
-                                <textarea class="form-textarea" id="user-token-input"
-                                    placeholder="Dán User Access Token để import tất cả Pages..."
-                                    style="min-height:80px;font-family:monospace;font-size:11px;"></textarea>
-                            </div>
-                            <button class="btn btn-secondary" onclick="importPages()" style="width:100%;">
-                                📥 Import tất cả Pages
+                            <button class="btn btn-primary" onclick="useAffCaptionForPublish()"
+                                style="width:100%;margin-top:10px;">
+                                📤 Dùng caption này để đăng bài
                             </button>
                         </div>
-                    </div>
-                </div>
 
-                <!-- ═══════════ SETTINGS ═══════════ -->
-                <div class="page" id="page-settings">
-                    <div class="card">
-                        <div class="card-header">
-                            <div class="card-title"><span class="icon">⚙️</span> Cài đặt hệ thống</div>
-                        </div>
-                        <div id="settings-content">
-                            <div class="three-col">
-                                <div>
-                                    <div class="form-group">
-                                        <label class="form-label">AI Provider</label>
-                                        <div id="setting-ai-provider"
-                                            style="font-size:14px;font-weight:600;color:var(--accent-primary-light);">--
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">OpenAI API Key</label>
-                                        <div id="setting-openai" class="badge badge-pending">Chưa cấu hình</div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">Gemini API Key</label>
-                                        <div id="setting-gemini" class="badge badge-pending">Chưa cấu hình</div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="form-group">
-                                        <label class="form-label">Facebook App</label>
-                                        <div id="setting-fb" class="badge badge-pending">Chưa cấu hình</div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">Tự động xóa Video</label>
-                                        <div id="setting-cleanup" class="badge">--</div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">FFmpeg Path</label>
-                                        <div id="setting-ffmpeg" style="font-size:13px;color:var(--text-secondary);">--
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="form-group">
-                                        <label class="form-label">Thư mục tải về</label>
-                                        <div id="setting-download-dir"
-                                            style="font-size:12px;color:var(--text-tertiary);word-break:break-all;">--
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">Thư mục đã xử lý</label>
-                                        <div id="setting-processed-dir"
-                                            style="font-size:12px;color:var(--text-tertiary);word-break:break-all;">--
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <hr style="border-color: var(--border-color); margin: 20px 0;">
-                            <div style="font-size:12px;color:var(--text-tertiary);">
-                                💡 Để thay đổi cài đặt, chỉnh sửa file <code>.env</code> và khởi động lại server.
-                            </div>
+                        <div id="aff-empty" style="padding:40px;text-align:center;color:var(--text-tertiary);">
+                            <div style="font-size:40px;margin-bottom:12px;">🔗</div>
+                            <div style="font-size:14px;font-weight:500;">Tạo caption bán hàng bằng AI</div>
+                            <div style="font-size:12px;margin-top:6px;">Hỗ trợ: Shopee, TikTok Shop, Lazada</div>
                         </div>
                     </div>
                 </div>
-
-                <!-- ═══════════ LOGS ═══════════ -->
-                <div class="page" id="page-logs">
-                    <div class="card">
-                        <div class="card-header">
-                            <div class="card-title"><span class="icon">📜</span> System Logs</div>
-                            <div style="display:flex;gap:8px;">
-                                <label
-                                    style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
-                                    <input type="checkbox" id="log-auto-scroll" checked class="toggle"
-                                        style="width:36px;height:20px;">
-                                    Auto-scroll
-                                </label>
-                                <button class="btn btn-ghost btn-sm" onclick="loadLogs()">🔄 Refresh</button>
-                                <button class="btn btn-ghost btn-sm" onclick="clearLogs()"
-                                    style="color:var(--accent-danger);">🗑️ Clear</button>
-                            </div>
-                        </div>
-                        <div class="log-terminal" id="log-terminal">
-                            <div class="log-content" id="log-content">
-                                <div style="color:var(--text-tertiary);font-style:italic;">Loading logs...</div>
-                            </div>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
-                            <div style="font-size:11px;color:var(--text-tertiary);" id="log-count">0 entries</div>
-                            <div style="display:flex;gap:6px;">
-                                <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('all')"
-                                    style="font-size:11px;">All</button>
-                                <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('ERROR')"
-                                    style="font-size:11px;color:var(--accent-danger);">Errors</button>
-                                <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('WARNING')"
-                                    style="font-size:11px;color:var(--accent-warning);">Warnings</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
             </div>
-        </main>
+
+            <!-- ═══════════ AUTO SEEDING ═══════════ -->
+            <div class="page" id="page-seeding">
+                <!-- Stats Row -->
+                <div class="stats-grid" id="seeding-stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="stat-card">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-value" id="seed-stat-accounts">0</div>
+                        <div class="stat-label">Tài khoản Active</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⏳</div>
+                        <div class="stat-value" id="seed-stat-pending">0</div>
+                        <div class="stat-label">Đang chờ</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-value" id="seed-stat-completed">0</div>
+                        <div class="stat-label">Đã thực hiện</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-value" id="seed-stat-today">0</div>
+                        <div class="stat-label">Hôm nay</div>
+                    </div>
+                </div>
+
+                <div class="two-col" style="margin-top:20px;">
+                    <!-- LEFT: Account Management -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">👥</span> Tài khoản Seeding (Via/Clone)</div>
+                            <button class="btn btn-ghost btn-sm" onclick="loadSeedingAccounts()">🔄 Làm mới</button>
+                        </div>
+
+                        <!-- Add Account Form -->
+                        <div
+                            style="background:var(--bg-tertiary);border-radius:var(--radius-md);padding:14px;margin-bottom:16px;">
+                            <div class="form-group" style="margin-bottom:8px;">
+                                <label class="form-label">Tên hiển thị</label>
+                                <input type="text" class="form-input" id="seed-acc-name"
+                                    placeholder="Tên Via/Clone (để trống = tự lấy)">
+                            </div>
+                            <div class="form-group" style="margin-bottom:8px;">
+                                <label class="form-label">Access Token</label>
+                                <input type="text" class="form-input" id="seed-acc-token"
+                                    placeholder="Paste Facebook User Access Token...">
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <select class="form-select" id="seed-acc-type" style="width:120px;">
+                                    <option value="clone">Clone</option>
+                                    <option value="via">Via</option>
+                                    <option value="personal">Cá nhân</option>
+                                </select>
+                                <input type="number" class="form-input" id="seed-acc-limit" value="50" min="5" max="200"
+                                    style="width:80px;" title="Giới hạn/ngày">
+                                <button class="btn btn-primary" onclick="addSeedingAccount()" style="flex:1;">➕ Thêm
+                                    tài khoản</button>
+                            </div>
+                        </div>
+
+                        <!-- Account List -->
+                        <div id="seeding-account-list" style="max-height:350px;overflow-y:auto;">
+                            <div class="empty-state">
+                                <div class="empty-icon">👥</div>
+                                <div class="empty-title">Chưa có tài khoản seeding</div>
+                                <div class="empty-desc">Thêm Via/Clone để bắt đầu auto seeding</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT: Create Seeding Task -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🎯</span> Tạo Seeding cho bài đăng</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Facebook Post ID</label>
+                            <input type="text" class="form-input" id="seed-post-id"
+                                placeholder="VD: 123456789_987654321 (lấy từ URL bài đăng)">
+                            <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">
+                                💡 Nhấn vào bài đăng → Copy ID từ URL (phần sau /posts/ hoặc ?id=)
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Tên Page (để ghi nhớ)</label>
+                            <input type="text" class="form-input" id="seed-page-name" placeholder="Tên Page...">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Tác vụ seeding</label>
+                            <div style="display:flex;flex-direction:column;gap:8px;">
+                                <div class="toggle-group">
+                                    <input type="checkbox" class="toggle" id="seed-action-like" checked>
+                                    <div>
+                                        <div class="toggle-label">👍 Auto Like</div>
+                                        <div class="toggle-desc">Tự động like bằng tất cả tài khoản</div>
+                                    </div>
+                                </div>
+                                <div class="toggle-group">
+                                    <input type="checkbox" class="toggle" id="seed-action-comment" checked>
+                                    <div>
+                                        <div class="toggle-label">💬 Auto Comment</div>
+                                        <div class="toggle-desc">Comment ngẫu nhiên từ kho mẫu (khen, hỏi, tương
+                                            tác)</div>
+                                    </div>
+                                </div>
+                                <div class="toggle-group">
+                                    <input type="checkbox" class="toggle" id="seed-action-share">
+                                    <div>
+                                        <div class="toggle-label">📤 Auto Share</div>
+                                        <div class="toggle-desc">Chia sẻ bài đăng lên tường cá nhân</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex;gap:10px;">
+                            <div class="form-group" style="flex:1;">
+                                <label class="form-label">Delay tối thiểu (giây)</label>
+                                <input type="number" class="form-input" id="seed-delay-min" value="30" min="10">
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label class="form-label">Delay tối đa (giây)</label>
+                                <input type="number" class="form-input" id="seed-delay-max" value="180" min="30">
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary btn-lg" onclick="createSeedingPlan()" style="width:100%;">
+                            🎯 Tạo kế hoạch Seeding
+                        </button>
+                        <div id="seeding-plan-status" style="margin-top:12px;"></div>
+                    </div>
+                </div>
+
+                <!-- Task History -->
+                <div class="card" style="margin-top:20px;">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">📋</span> Lịch sử Seeding</div>
+                        <button class="btn btn-ghost btn-sm" onclick="loadSeedingTasks()">🔄 Làm mới</button>
+                    </div>
+                    <div id="seeding-task-list" style="max-height:400px;overflow-y:auto;">
+                        <div class="empty-state">
+                            <div class="empty-icon">📋</div>
+                            <div class="empty-title">Chưa có tác vụ seeding nào</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ ANALYTICS (SO9 Style) ═══════════ -->
+            <div class="page" id="page-analytics">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">📊</span> Thống kê chuyên sâu toàn bộ Pages</div>
+                        <button class="btn btn-primary btn-sm" onclick="loadAnalyticsPage()">🔄 Cập nhật dữ liệu mới
+                            nhất</button>
+                    </div>
+
+                    <!-- Analytics Hero Stats -->
+                    <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+                        <div class="stat-card">
+                            <div class="stat-icon" style="color:#00b894;">👥</div>
+                            <div class="stat-value" id="ana-total-fans">0</div>
+                            <div class="stat-label">Tổng Followers</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon" style="color:#6c5ce7;">🔥</div>
+                            <div class="stat-value" id="ana-total-engagement">0</div>
+                            <div class="stat-label">Tổng Tương tác</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon" style="color:#fdcb6e;">⚡</div>
+                            <div class="stat-value" id="ana-avg-engagement">0</div>
+                            <div class="stat-label">Tương tác trung bình</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon" style="color:#00cec9;">📹</div>
+                            <div class="stat-value" id="ana-total-posts">0</div>
+                            <div class="stat-label">Bài viết phân tích</div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row -->
+                    <div class="two-col" style="margin-bottom: 24px;">
+                        <div class="card" style="background: var(--bg-secondary);">
+                            <div class="card-header">
+                                <div class="card-title">Tỷ lệ tương tác theo Page</div>
+                            </div>
+                            <div style="height: 300px;"><canvas id="chart-ana-engagement"></canvas></div>
+                        </div>
+                        <div class="card" style="background: var(--bg-secondary);">
+                            <div class="card-header">
+                                <div class="card-title">Phân bổ Followers</div>
+                            </div>
+                            <div style="height: 300px;"><canvas id="chart-ana-fans"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Table -->
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">🏆</span> Bảng xếp hạng hiệu suất Pages</div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Fanpage</th>
+                                    <th>Followers</th>
+                                    <th>Tương tác (10 bài gần nhất)</th>
+                                    <th>Trung bình/Bài</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="analytics-table-body">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ FB PAGES ═══════════ -->
+            <div class="page" id="page-pages">
+                <div class="two-col">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">📘</span> Facebook Pages</div>
+                            <button class="btn btn-ghost btn-sm" onclick="loadFBPages()">🔄 Làm mới</button>
+                        </div>
+
+                        <!-- Login Status -->
+                        <div id="fb-login-status" style="margin-bottom:20px;">
+                            <div
+                                style="background:var(--bg-tertiary);border-radius:var(--radius-md);padding:16px;display:flex;align-items:center;gap:14px;">
+                                <div
+                                    style="width:42px;height:42px;background:linear-gradient(135deg,#1877F2,#42b72a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
+                                    📘</div>
+                                <div style="flex:1;">
+                                    <div style="font-size:13px;font-weight:600;" id="fb-login-user">Chưa đăng nhập
+                                        Facebook</div>
+                                    <div style="font-size:11px;color:var(--text-tertiary);" id="fb-login-detail">
+                                        Đăng nhập để tự động lấy danh sách Pages</div>
+                                </div>
+                                <button class="btn btn-primary" onclick="loginFacebook()" id="btn-fb-login"
+                                    style="background:linear-gradient(135deg,#1877F2,#42b72a);box-shadow:0 4px 15px rgba(24,119,242,0.3);">
+                                    🔐 Đăng nhập Facebook
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Pages List -->
+                        <div id="fb-pages-list">
+                            <div class="empty-state">
+                                <div class="empty-icon">📘</div>
+                                <div class="empty-title">Chưa có Page nào</div>
+                                <div class="empty-desc">Nhấn "Đăng nhập Facebook" để bắt đầu</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">🔧</span> Thêm Page thủ công</div>
+                        </div>
+
+                        <div style="margin-bottom:20px;">
+                            <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px;line-height:1.6;">
+                                💡 Nếu không dùng OAuth login, bạn có thể dán token thủ công từ
+                                <a href="https://developers.facebook.com/tools/explorer/" target="_blank">Graph API
+                                    Explorer</a>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Page Access Token</label>
+                            <textarea class="form-textarea" id="page-token-input"
+                                placeholder="Dán Page Access Token vào đây..."
+                                style="min-height:80px;font-family:monospace;font-size:11px;"></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="addFBPage()" style="width:100%;">
+                            ➕ Thêm Page
+                        </button>
+
+                        <hr style="border-color: var(--border-color); margin: 24px 0;">
+
+                        <div class="card-header">
+                            <div class="card-title"><span class="icon">👤</span> Import từ User Token</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">User Access Token</label>
+                            <textarea class="form-textarea" id="user-token-input"
+                                placeholder="Dán User Access Token để import tất cả Pages..."
+                                style="min-height:80px;font-family:monospace;font-size:11px;"></textarea>
+                        </div>
+                        <button class="btn btn-secondary" onclick="importPages()" style="width:100%;">
+                            📥 Import tất cả Pages
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ SETTINGS ═══════════ -->
+            <div class="page" id="page-settings">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">⚙️</span> Cài đặt hệ thống</div>
+                    </div>
+                    <div id="settings-content">
+                        <div class="three-col">
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label">AI Provider</label>
+                                    <div id="setting-ai-provider"
+                                        style="font-size:14px;font-weight:600;color:var(--accent-primary-light);">--
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">OpenAI API Key</label>
+                                    <div id="setting-openai" class="badge badge-pending">Chưa cấu hình</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Gemini API Key</label>
+                                    <div id="setting-gemini" class="badge badge-pending">Chưa cấu hình</div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label">Facebook App</label>
+                                    <div id="setting-fb" class="badge badge-pending">Chưa cấu hình</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Tự động xóa Video</label>
+                                    <div id="setting-cleanup" class="badge">--</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">FFmpeg Path</label>
+                                    <div id="setting-ffmpeg" style="font-size:13px;color:var(--text-secondary);">--
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label">Thư mục tải về</label>
+                                    <div id="setting-download-dir"
+                                        style="font-size:12px;color:var(--text-tertiary);word-break:break-all;">--
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Thư mục đã xử lý</label>
+                                    <div id="setting-processed-dir"
+                                        style="font-size:12px;color:var(--text-tertiary);word-break:break-all;">--
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <hr style="border-color: var(--border-color); margin: 20px 0;">
+                        <div style="font-size:12px;color:var(--text-tertiary);">
+                            💡 Để thay đổi cài đặt, chỉnh sửa file <code>.env</code> và khởi động lại server.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════ LOGS ═══════════ -->
+            <div class="page" id="page-logs">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">📜</span> System Logs</div>
+                        <div style="display:flex;gap:8px;">
+                            <label
+                                style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
+                                <input type="checkbox" id="log-auto-scroll" checked class="toggle"
+                                    style="width:36px;height:20px;">
+                                Auto-scroll
+                            </label>
+                            <button class="btn btn-ghost btn-sm" onclick="loadLogs()">🔄 Refresh</button>
+                            <button class="btn btn-ghost btn-sm" onclick="clearLogs()"
+                                style="color:var(--accent-danger);">🗑️ Clear</button>
+                        </div>
+                    </div>
+                    <div class="log-terminal" id="log-terminal">
+                        <div class="log-content" id="log-content">
+                            <div style="color:var(--text-tertiary);font-style:italic;">Loading logs...</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+                        <div style="font-size:11px;color:var(--text-tertiary);" id="log-count">0 entries</div>
+                        <div style="display:flex;gap:6px;">
+                            <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('all')"
+                                style="font-size:11px;">All</button>
+                            <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('ERROR')"
+                                style="font-size:11px;color:var(--accent-danger);">Errors</button>
+                            <button class="btn btn-ghost btn-sm" onclick="filterLogLevel('WARNING')"
+                                style="font-size:11px;color:var(--accent-warning);">Warnings</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+    </div>
+    </main>
     </div>
 
     <!-- Toast Container -->
