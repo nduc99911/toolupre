@@ -513,6 +513,9 @@ async def api_add_fb_page(request: Request):
     if not access_token:
         raise HTTPException(400, "Access token is required")
 
+    # Attempt to extend token if it's a user token or short-lived
+    access_token = await FacebookAPI.extend_token(access_token)
+
     # Verify token
     page_info = await FacebookAPI.verify_token(access_token)
     if "error" in page_info:
@@ -545,6 +548,10 @@ async def api_import_pages_from_user(request: Request):
     if not user_token:
         raise HTTPException(400, "User access token is required")
 
+    # Step 1: Extend the user token to 60 days
+    user_token = await FacebookAPI.extend_token(user_token)
+
+    # Step 2: Fetch pages (the page tokens returned will now be permanent/long-lived)
     pages = await FacebookAPI.get_user_pages(user_token)
     if pages and "error" in pages[0]:
         raise HTTPException(400, pages[0]["error"])
@@ -571,9 +578,19 @@ async def api_import_pages_from_user(request: Request):
 
 @app.delete("/api/fb/pages/{page_db_id}")
 async def api_delete_fb_page(page_db_id: str):
-    """Remove a Facebook page."""
     await db.delete_fb_page(page_db_id)
     return {"success": True}
+
+@app.post("/api/fb/pages/{page_db_id}/debug")
+async def api_debug_fb_token(page_db_id: str):
+    """Get info about a page token."""
+    pages = await db.get_all_fb_pages()
+    page = next((p for p in pages if p["id"] == page_db_id), None)
+    if not page:
+        raise HTTPException(404, "Page not found")
+        
+    info = await FacebookAPI.get_token_info(page["access_token"])
+    return info
 
 
 @app.put("/api/fb/pages/{page_db_id}")

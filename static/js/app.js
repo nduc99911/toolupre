@@ -1407,13 +1407,40 @@ async function importPages() {
     }
 }
 
-async function deleteFBPage(pageDbId) {
-    if (!confirm('Xóa Page này?')) return;
+async function deleteFBPage(id) {
+    if (!confirm('Xác nhận xóa Page này?')) return;
     try {
-        await api(`/api/fb/pages/${pageDbId}`, { method: 'DELETE' });
+        await api(`/api/fb/pages/${id}`, { method: 'DELETE' });
         showToast('Đã xóa Page', 'success');
         loadFBPages();
         loadStats();
+    } catch (err) {
+        showToast(`Lỗi: ${err.message}`, 'error');
+    }
+}
+
+async function debugFBToken(id) {
+    try {
+        showToast('Đang kiểm tra token...', 'info');
+        const info = await api(`/api/fb/pages/${id}/debug`, { method: 'POST' });
+
+        if (info.error) {
+            alert(`Lỗi: ${info.error.message}`);
+            return;
+        }
+
+        const expires = info.expires_at ? new Date(info.expires_at * 1000).toLocaleString() : 'Vĩnh viễn (Never)';
+        const scopes = info.scopes ? info.scopes.join(', ') : 'N/A';
+
+        const msg = `
+🔍 THÔNG TIN TOKEN:
+- Trạng thái: ${info.is_valid ? '✅ Hợp lệ' : '❌ Hết hạn/Lỗi'}
+- Loại: ${info.type}
+- Hết hạn: ${expires}
+- Quyền hạn: ${scopes}
+- Ứng dụng: ${info.application}
+        `;
+        alert(msg);
     } catch (err) {
         showToast(`Lỗi: ${err.message}`, 'error');
     }
@@ -2291,8 +2318,11 @@ async function loadSeedingAccounts() {
                         ID: ${a.fb_user_id || '?'} • ${a.actions_today || 0}/${a.daily_limit || 50} hôm nay
                     </div>
                 </div>
-                <button class="btn btn-ghost btn-sm" onclick="deleteSeedingAccount('${a.id}')" title="Xóa">🗑️</button>
-            </div>`;
+                <div style="display:flex; gap:8px;">
+                <button class="btn btn-ghost btn-sm" onclick="debugFBToken('${a.id}')">🔍 Kiểm tra</button>
+                <button class="icon-btn danger" onclick="deleteSeedingAccount('${a.id}')">🗑️</button>
+            </div>
+        </div>`;
         }).join('');
     } catch (err) {
         console.error('Load seeding accounts error:', err);

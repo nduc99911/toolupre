@@ -21,6 +21,44 @@ class FacebookAPI:
     """Facebook Graph API wrapper for Page management and posting."""
 
     @staticmethod
+    async def extend_token(short_token: str) -> str:
+        """Exchange short-lived token for long-lived token (60 days)."""
+        async with httpx.AsyncClient(timeout=30) as client:
+            try:
+                response = await client.get(
+                    "https://graph.facebook.com/oauth/access_token",
+                    params={
+                        "grant_type": "fb_exchange_token",
+                        "client_id": settings.FB_APP_ID,
+                        "client_secret": settings.FB_APP_SECRET,
+                        "fb_exchange_token": short_token
+                    }
+                )
+                data = response.json()
+                return data.get("access_token", short_token)
+            except Exception as e:
+                logger.error(f"Failed to extend token: {e}")
+                return short_token
+
+    @staticmethod
+    async def get_token_info(access_token: str) -> dict:
+        """Get detailed info about a token (expiry, permissions, etc)."""
+        # Requires app access token or user token for some fields
+        async with httpx.AsyncClient(timeout=30) as client:
+            try:
+                response = await client.get(
+                    "https://graph.facebook.com/debug_token",
+                    params={
+                        "input_token": access_token,
+                        "access_token": f"{settings.FB_APP_ID}|{settings.FB_APP_SECRET}"
+                    }
+                )
+                return response.json().get("data", {})
+            except Exception as e:
+                logger.error(f"Failed to debug token: {e}")
+                return {"error": str(e)}
+
+    @staticmethod
     async def verify_token(access_token: str) -> dict:
         """Verify a page access token and get page info."""
         async with httpx.AsyncClient(timeout=30) as client:
