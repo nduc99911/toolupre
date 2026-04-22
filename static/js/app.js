@@ -1340,9 +1340,10 @@ function renderFBPages(pages) {
                 <div class="page-card-name">${escapeHtml(p.page_name)}</div>
                 <div class="page-card-cat">${escapeHtml(p.category || 'Page')} • ID: ${p.page_id}</div>
             </div>
-            <div style="display:flex; gap:4px;">
+            <div style="display:flex; gap:8px;">
+                <button class="btn btn-ghost btn-sm" onclick="debugFBToken('${p.id}')">🔍 Kiểm tra</button>
                 <button class="btn btn-ghost btn-sm" onclick="editFBPageToken('${p.id}', '${escapeHtml(p.page_name).replace(/'/g, "\\'")}')" title="Sửa Token">✏️ Sửa Token</button>
-                <button class="btn btn-ghost btn-sm" onclick="deleteFBPage('${p.id}')" style="color:var(--accent-danger);" title="Xóa">🗑️</button>
+                <button class="icon-btn danger" onclick="deleteFBPage('${p.id}')">🗑️</button>
             </div>
         </div>`;
     });
@@ -2318,11 +2319,8 @@ async function loadSeedingAccounts() {
                         ID: ${a.fb_user_id || '?'} • ${a.actions_today || 0}/${a.daily_limit || 50} hôm nay
                     </div>
                 </div>
-                <div style="display:flex; gap:8px;">
-                <button class="btn btn-ghost btn-sm" onclick="debugFBToken('${a.id}')">🔍 Kiểm tra</button>
-                <button class="icon-btn danger" onclick="deleteSeedingAccount('${a.id}')">🗑️</button>
-            </div>
-        </div>`;
+                <button class="btn btn-ghost btn-sm" onclick="deleteSeedingAccount('${a.id}')" title="Xóa">🗑️</button>
+            </div>`;
         }).join('');
     } catch (err) {
         console.error('Load seeding accounts error:', err);
