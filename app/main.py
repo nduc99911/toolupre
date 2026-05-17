@@ -1305,18 +1305,21 @@ async def api_list_profile_videos(request: Request):
     if platform == "facebook":
         import re
         # Convert reels_tab URL to /videos/ URL which yt-dlp understands
-        # facebook.com/profile.php?id=123&sk=reels_tab -> facebook.com/profile.php?id=123/videos/
         profile_url = re.sub(r'[&?]sk=reels_tab', '', profile_url)
 
         # Ensure URL ends with /videos/ for profile pages
         if 'profile.php' in profile_url:
-            # facebook.com/profile.php?id=123 -> add /videos at end
             if '/videos' not in profile_url:
                 profile_url = profile_url.rstrip('/') + '/videos/'
         else:
-            # facebook.com/pagename -> facebook.com/pagename/videos/
             if '/videos' not in profile_url and '/reels' not in profile_url:
                 profile_url = profile_url.rstrip('/') + '/videos/'
+
+        # Auto-detect previously uploaded cookies if not provided
+        if not cookie_file:
+            saved_cookies = os.path.join(settings.DOWNLOAD_DIR, "..", "cookies", "facebook_cookies.txt")
+            if os.path.exists(saved_cookies):
+                cookie_file = os.path.abspath(saved_cookies)
 
     import subprocess
     from concurrent.futures import ThreadPoolExecutor
@@ -1333,12 +1336,6 @@ async def api_list_profile_videos(request: Request):
 
         # Facebook needs cookies to access content
         if platform == "facebook":
-            # Auto-detect previously uploaded cookies if not provided
-            if not cookie_file:
-                saved_cookies = os.path.join(settings.DOWNLOAD_DIR, "..", "cookies", "facebook_cookies.txt")
-                if os.path.exists(saved_cookies):
-                    cookie_file = os.path.abspath(saved_cookies)
-
             if cookie_file and os.path.exists(cookie_file):
                 cmd.extend(["--cookies", cookie_file])
             else:
