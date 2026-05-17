@@ -1338,9 +1338,6 @@ async def api_list_profile_videos(request: Request):
         if platform == "facebook":
             if cookie_file and os.path.exists(cookie_file):
                 cmd.extend(["--cookies", cookie_file])
-            else:
-                # Last resort: try browser cookies
-                cmd.extend(["--cookies-from-browser", "chrome"])
 
         cmd.append(profile_url)
 
