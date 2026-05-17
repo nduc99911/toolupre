@@ -1253,6 +1253,35 @@ Trả về JSON:
 
 
 # ═══════════════════════════════════════════
+# API: UPLOAD COOKIES (for Facebook Reels scraping)
+# ═══════════════════════════════════════════
+
+@app.post("/api/upload-cookies")
+async def api_upload_cookies(request: Request):
+    """Upload a cookies.txt file for yt-dlp to use with Facebook."""
+    from starlette.datastructures import UploadFile
+    import aiofiles
+
+    form = await request.form()
+    file = form.get("file")
+
+    if not file:
+        raise HTTPException(400, "No file uploaded")
+
+    # Save to storage directory
+    cookies_dir = os.path.join(settings.DOWNLOAD_DIR, "..", "cookies")
+    os.makedirs(cookies_dir, exist_ok=True)
+    cookie_path = os.path.join(cookies_dir, "facebook_cookies.txt")
+
+    content = await file.read()
+    with open(cookie_path, "wb") as f:
+        f.write(content)
+
+    logger.info(f"Cookies uploaded: {cookie_path} ({len(content)} bytes)")
+    return {"success": True, "path": os.path.abspath(cookie_path), "size": len(content)}
+
+
+# ═══════════════════════════════════════════
 # API: BULK PROFILE DOWNLOAD (SO9 9Downloader)
 # ═══════════════════════════════════════════
 
@@ -1260,39 +1289,35 @@ Trả về JSON:
 async def api_list_profile_videos(request: Request):
     """
     List all videos from a user profile URL (TikTok, Douyin, YouTube, Facebook).
-    Uses yt-dlp --flat-playlist for TikTok/YouTube.
-    Uses Facebook Graph API for Facebook profiles/pages.
+    Uses yt-dlp for all platforms. Facebook uses --cookies-from-browser.
     """
     data = await request.json()
     profile_url = data.get("url", "").strip()
     limit = int(data.get("limit", 30))
+    cookie_file = data.get("cookie_file", "")  # Optional: path to cookies.txt
 
     if not profile_url:
         raise HTTPException(400, "Profile URL is required")
 
     platform = detect_platform(profile_url)
 
-    # ─── Facebook Reels: Use Graph API ───
+    # ─── Normalize Facebook URLs for yt-dlp ───
     if platform == "facebook":
-        # Get an access token from saved FB pages
-        fb_pages = await db.get_all_fb_pages()
-        if not fb_pages:
-            raise HTTPException(400, "Chưa có Page Facebook nào được liên kết. Vui lòng thêm Page trước để lấy token quét Reels.")
+        import re
+        # Convert reels_tab URL to /videos/ URL which yt-dlp understands
+        # facebook.com/profile.php?id=123&sk=reels_tab -> facebook.com/profile.php?id=123/videos/
+        profile_url = re.sub(r'[&?]sk=reels_tab', '', profile_url)
 
-        # Use the first active page's token
-        access_token = fb_pages[0].get("access_token", "")
-        if not access_token:
-            raise HTTPException(400, "Token Facebook không hợp lệ. Vui lòng cập nhật lại token.")
+        # Ensure URL ends with /videos/ for profile pages
+        if 'profile.php' in profile_url:
+            # facebook.com/profile.php?id=123 -> add /videos at end
+            if '/videos' not in profile_url:
+                profile_url = profile_url.rstrip('/') + '/videos/'
+        else:
+            # facebook.com/pagename -> facebook.com/pagename/videos/
+            if '/videos' not in profile_url and '/reels' not in profile_url:
+                profile_url = profile_url.rstrip('/') + '/videos/'
 
-        videos = await FacebookAPI.scrape_fb_reels(profile_url, access_token, limit)
-
-        if videos and "error" in videos[0]:
-            raise HTTPException(500, videos[0]["error"])
-
-        logger.info(f"FB Reels scan: found {len(videos)} videos from {profile_url}")
-        return {"videos": videos, "count": len(videos), "profile_url": profile_url}
-
-    # ─── Other platforms: Use yt-dlp ───
     import subprocess
     from concurrent.futures import ThreadPoolExecutor
 
@@ -1304,25 +1329,59 @@ async def api_list_profile_videos(request: Request):
             "--print", "%(id)s|||%(title)s|||%(url)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s",
             "--no-warnings",
             "--no-check-certificates",
-            profile_url,
         ]
+
+        # Facebook needs cookies to access content
+        if platform == "facebook":
+            # Auto-detect previously uploaded cookies if not provided
+            if not cookie_file:
+                saved_cookies = os.path.join(settings.DOWNLOAD_DIR, "..", "cookies", "facebook_cookies.txt")
+                if os.path.exists(saved_cookies):
+                    cookie_file = os.path.abspath(saved_cookies)
+
+            if cookie_file and os.path.exists(cookie_file):
+                cmd.extend(["--cookies", cookie_file])
+            else:
+                # Last resort: try browser cookies
+                cmd.extend(["--cookies-from-browser", "chrome"])
+
+        cmd.append(profile_url)
+
+        logger.info(f"Profile scan cmd: {' '.join(cmd)}")
+
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, encoding='utf-8', errors='replace')
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, encoding='utf-8', errors='replace')
             videos = []
+
+            if result.returncode != 0 and not result.stdout.strip():
+                error_msg = result.stderr.strip() if result.stderr else "yt-dlp failed"
+                # Extract meaningful error
+                for line in error_msg.split('\n'):
+                    if 'ERROR' in line:
+                        return [{"error": line.strip()}]
+                return [{"error": f"Quét thất bại. Đảm bảo bạn đã đăng nhập Facebook trên Chrome. Chi tiết: {error_msg[-300:]}"}]
+
             for line in result.stdout.strip().split("\n"):
                 if "|||" not in line:
                     continue
                 parts = line.split("|||")
                 if len(parts) >= 3:
+                    vid_url = parts[2] if len(parts) > 2 and parts[2] != "NA" else ""
+                    # Make sure Facebook URLs are complete
+                    if vid_url and not vid_url.startswith("http"):
+                        vid_url = f"https://www.facebook.com{vid_url}" if vid_url.startswith("/") else f"https://www.facebook.com/{vid_url}"
+
                     videos.append({
                         "id": parts[0] if parts[0] != "NA" else "",
-                        "title": parts[1] if len(parts) > 1 and parts[1] != "NA" else "Untitled",
-                        "url": parts[2] if len(parts) > 2 and parts[2] != "NA" else "",
+                        "title": parts[1] if len(parts) > 1 and parts[1] != "NA" else "Facebook Video",
+                        "url": vid_url,
                         "duration": parts[3] if len(parts) > 3 and parts[3] != "NA" else "0",
                         "views": parts[4] if len(parts) > 4 and parts[4] != "NA" else "0",
                         "thumbnail": parts[5] if len(parts) > 5 and parts[5] != "NA" else "",
                     })
             return videos
+        except subprocess.TimeoutExpired:
+            return [{"error": "Quét quá lâu (timeout 120s). Thử giảm số lượng video."}]
         except Exception as e:
             return [{"error": str(e)}]
 

@@ -310,12 +310,25 @@
                                 • TikTok: <code>https://www.tiktok.com/@username</code><br>
                                 • YouTube: <code>https://www.youtube.com/@channel</code><br>
                                 • <b style="color:var(--accent-primary);">Facebook Reels:</b> <code>https://www.facebook.com/profile.php?id=xxx</code> hoặc <code>/pagename/reels</code><br>
-                                <span style="color:var(--accent-warning);">⚠️ Facebook cần đã thêm ít nhất 1 Page (để lấy token quét).</span>
+                                <span style="color:var(--accent-warning);">⚠️ Facebook: Cần đăng nhập FB trên Chrome của server/VPS để quét được.</span>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Số video tối đa</label>
                                 <input type="number" class="form-input" id="profile-limit" value="30" min="1" max="100">
                             </div>
+
+                            <!-- Facebook Cookies Upload -->
+                            <div class="form-group" id="fb-cookies-group" style="display:none;">
+                                <label class="form-label">🍪 Facebook Cookies (cho VPS)</label>
+                                <div style="font-size:10px;color:var(--text-tertiary);margin-bottom:8px;line-height:1.5;">
+                                    Cài extension <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" style="color:var(--accent-primary);">Get cookies.txt LOCALLY</a> →
+                                    Vào facebook.com → Export cookies → Upload file ở đây.
+                                </div>
+                                <input type="file" id="fb-cookies-file" accept=".txt" class="form-input" style="padding:8px;">
+                                <button class="btn btn-ghost btn-sm" onclick="uploadFBCookies()" style="margin-top:6px;width:100%;">📤 Upload Cookies</button>
+                                <div id="fb-cookies-status" style="font-size:11px;margin-top:4px;"></div>
+                            </div>
+
                             <button class="btn btn-primary btn-lg" onclick="scanProfile()" style="width:100%;"
                                 id="btn-scan-profile">
                                 🔍 Quét danh sách Video

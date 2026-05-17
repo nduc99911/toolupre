@@ -1902,6 +1902,48 @@ function renderRecentActivity(activities) {
 // ═══════════════════════════════════════════
 let profileVideos = [];
 
+// Auto-show cookies upload for Facebook URLs
+(function() {
+    const profileInput = document.getElementById('profile-url');
+    if (profileInput) {
+        profileInput.addEventListener('input', function() {
+            const val = this.value.toLowerCase();
+            const cookieGroup = document.getElementById('fb-cookies-group');
+            if (cookieGroup) {
+                cookieGroup.style.display = (val.includes('facebook.com') || val.includes('fb.com') || val.includes('fb.watch')) ? 'block' : 'none';
+            }
+        });
+    }
+})();
+
+// Upload Facebook cookies.txt
+let fbCookieFilePath = '';
+async function uploadFBCookies() {
+    const fileInput = document.getElementById('fb-cookies-file');
+    if (!fileInput.files.length) {
+        showToast('Chọn file cookies.txt trước', 'warning');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        const resp = await fetch('/api/upload-cookies', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (data.success) {
+            fbCookieFilePath = data.path;
+            document.getElementById('fb-cookies-status').innerHTML = '<span style="color:var(--accent-success);">✅ Upload thành công!</span>';
+            showToast('Cookies đã được upload!', 'success');
+        } else {
+            throw new Error(data.detail || 'Upload failed');
+        }
+    } catch (err) {
+        showToast(`Lỗi upload: ${err.message}`, 'error');
+        document.getElementById('fb-cookies-status').innerHTML = `<span style="color:var(--accent-danger);">❌ ${err.message}</span>`;
+    }
+}
+
 async function scanProfile() {
     const url = document.getElementById('profile-url').value.trim();
     const limit = document.getElementById('profile-limit').value || 30;
@@ -1910,12 +1952,23 @@ async function scanProfile() {
     const btn = document.getElementById('btn-scan-profile');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Đang quét...';
-    document.getElementById('profile-scan-status').innerHTML = '<div class="badge badge-processing">🔍 Đang quét profile, có thể mất 30-60s...</div>';
+
+    const isFacebook = url.toLowerCase().includes('facebook.com') || url.toLowerCase().includes('fb.com');
+    const statusMsg = isFacebook
+        ? '🔍 Đang quét Facebook Reels, có thể mất 1-2 phút...'
+        : '🔍 Đang quét profile, có thể mất 30-60s...';
+    document.getElementById('profile-scan-status').innerHTML = `<div class="badge badge-processing">${statusMsg}</div>`;
 
     try {
+        const body = { url, limit: parseInt(limit) };
+        // Send cookie file path if available (for Facebook)
+        if (isFacebook && fbCookieFilePath) {
+            body.cookie_file = fbCookieFilePath;
+        }
+
         const data = await api('/api/profile/list-videos', {
             method: 'POST',
-            body: JSON.stringify({ url, limit: parseInt(limit) }),
+            body: JSON.stringify(body),
         });
 
         profileVideos = data.videos || [];
