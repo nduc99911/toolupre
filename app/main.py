@@ -1259,8 +1259,9 @@ Trả về JSON:
 @app.post("/api/profile/list-videos")
 async def api_list_profile_videos(request: Request):
     """
-    List all videos from a user profile URL (TikTok, Douyin, YouTube).
-    Uses yt-dlp --flat-playlist to enumerate without downloading.
+    List all videos from a user profile URL (TikTok, Douyin, YouTube, Facebook).
+    Uses yt-dlp --flat-playlist for TikTok/YouTube.
+    Uses Facebook Graph API for Facebook profiles/pages.
     """
     data = await request.json()
     profile_url = data.get("url", "").strip()
@@ -1269,6 +1270,29 @@ async def api_list_profile_videos(request: Request):
     if not profile_url:
         raise HTTPException(400, "Profile URL is required")
 
+    platform = detect_platform(profile_url)
+
+    # ─── Facebook Reels: Use Graph API ───
+    if platform == "facebook":
+        # Get an access token from saved FB pages
+        fb_pages = await db.get_all_fb_pages()
+        if not fb_pages:
+            raise HTTPException(400, "Chưa có Page Facebook nào được liên kết. Vui lòng thêm Page trước để lấy token quét Reels.")
+
+        # Use the first active page's token
+        access_token = fb_pages[0].get("access_token", "")
+        if not access_token:
+            raise HTTPException(400, "Token Facebook không hợp lệ. Vui lòng cập nhật lại token.")
+
+        videos = await FacebookAPI.scrape_fb_reels(profile_url, access_token, limit)
+
+        if videos and "error" in videos[0]:
+            raise HTTPException(500, videos[0]["error"])
+
+        logger.info(f"FB Reels scan: found {len(videos)} videos from {profile_url}")
+        return {"videos": videos, "count": len(videos), "profile_url": profile_url}
+
+    # ─── Other platforms: Use yt-dlp ───
     import subprocess
     from concurrent.futures import ThreadPoolExecutor
 

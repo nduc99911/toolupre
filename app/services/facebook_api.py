@@ -450,3 +450,138 @@ class FacebookAPI:
                 "shares": total_shares,
                 "post_count": len(posts_data)
             }
+
+    @staticmethod
+    async def scrape_fb_reels(profile_url: str, access_token: str, limit: int = 30) -> list[dict]:
+        """
+        Scrape Facebook Reels/videos from a profile or page.
+        Uses Graph API to get video list with metadata.
+        Supports:
+          - https://www.facebook.com/profile.php?id=XXXX
+          - https://www.facebook.com/profile.php?id=XXXX&sk=reels_tab
+          - https://www.facebook.com/pagename
+          - https://www.facebook.com/pagename/reels
+        """
+        import re
+
+        # Extract profile/page ID from URL
+        fb_id = None
+
+        # Pattern 1: profile.php?id=123456
+        id_match = re.search(r'profile\.php\?id=(\d+)', profile_url)
+        if id_match:
+            fb_id = id_match.group(1)
+
+        # Pattern 2: facebook.com/pagename or facebook.com/pagename/reels
+        if not fb_id:
+            path_match = re.search(r'facebook\.com/([a-zA-Z0-9_.]+)', profile_url)
+            if path_match:
+                name = path_match.group(1)
+                # Skip common non-page paths
+                if name not in ('profile.php', 'watch', 'reel', 'stories', 'groups', 'events'):
+                    fb_id = name
+
+        if not fb_id:
+            return [{"error": "Không thể trích xuất ID từ URL Facebook"}]
+
+        logger.info(f"Scraping FB Reels for: {fb_id} (limit={limit})")
+
+        videos = []
+        async with httpx.AsyncClient(timeout=30) as client:
+            try:
+                # Step 1: Try to get videos via Graph API
+                # Use /videos endpoint which includes Reels
+                response = await client.get(
+                    f"{FB_GRAPH_URL}/{fb_id}/videos",
+                    params={
+                        "access_token": access_token,
+                        "fields": "id,title,description,length,created_time,thumbnails,source,permalink_url,views",
+                        "limit": str(limit),
+                    }
+                )
+                data = response.json()
+
+                if "error" in data:
+                    error_msg = data["error"].get("message", "Unknown error")
+                    logger.error(f"FB Graph API error for {fb_id}: {error_msg}")
+                    return [{"error": f"Facebook API: {error_msg}"}]
+
+                for video in data.get("data", []):
+                    video_id = video.get("id", "")
+                    # Build the direct FB watch URL
+                    permalink = video.get("permalink_url", "")
+                    if not permalink:
+                        permalink = f"https://www.facebook.com/{fb_id}/videos/{video_id}/"
+
+                    # Get best thumbnail
+                    thumbnail = ""
+                    thumbs = video.get("thumbnails", {}).get("data", [])
+                    if thumbs:
+                        # Pick the largest thumbnail
+                        best = max(thumbs, key=lambda t: t.get("height", 0) * t.get("width", 0))
+                        thumbnail = best.get("uri", "")
+
+                    title = video.get("title", "") or video.get("description", "")[:80] or "Facebook Video"
+                    duration = video.get("length", 0)
+                    views = video.get("views", 0)
+
+                    videos.append({
+                        "id": video_id,
+                        "title": title,
+                        "url": permalink,
+                        "duration": str(int(duration)) if duration else "0",
+                        "views": str(views) if views else "0",
+                        "thumbnail": thumbnail,
+                        "source_url": video.get("source", ""),  # Direct MP4 URL if available
+                    })
+
+                # Check for pagination
+                paging = data.get("paging", {})
+                next_url = paging.get("next", "")
+                page_count = 1
+                max_pages = 5  # Safety limit
+
+                while next_url and len(videos) < limit and page_count < max_pages:
+                    page_count += 1
+                    resp = await client.get(next_url)
+                    page_data = resp.json()
+
+                    if "error" in page_data:
+                        break
+
+                    for video in page_data.get("data", []):
+                        if len(videos) >= limit:
+                            break
+                        video_id = video.get("id", "")
+                        permalink = video.get("permalink_url", "")
+                        if not permalink:
+                            permalink = f"https://www.facebook.com/{fb_id}/videos/{video_id}/"
+
+                        thumbnail = ""
+                        thumbs = video.get("thumbnails", {}).get("data", [])
+                        if thumbs:
+                            best = max(thumbs, key=lambda t: t.get("height", 0) * t.get("width", 0))
+                            thumbnail = best.get("uri", "")
+
+                        title = video.get("title", "") or video.get("description", "")[:80] or "Facebook Video"
+                        duration = video.get("length", 0)
+                        views = video.get("views", 0)
+
+                        videos.append({
+                            "id": video_id,
+                            "title": title,
+                            "url": permalink,
+                            "duration": str(int(duration)) if duration else "0",
+                            "views": str(views) if views else "0",
+                            "thumbnail": thumbnail,
+                            "source_url": video.get("source", ""),
+                        })
+
+                    next_url = page_data.get("paging", {}).get("next", "")
+
+            except Exception as e:
+                logger.error(f"FB Reels scrape error: {e}")
+                return [{"error": f"Lỗi quét Facebook Reels: {str(e)}"}]
+
+        logger.info(f"FB Reels: Found {len(videos)} videos for {fb_id}")
+        return videos
