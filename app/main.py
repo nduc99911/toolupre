@@ -1301,29 +1301,8 @@ async def api_list_profile_videos(request: Request):
 
     platform = detect_platform(profile_url)
 
-    # ─── Normalize Facebook URLs for yt-dlp ───
+    # ─── Facebook Reels Scraper setup ───
     if platform == "facebook":
-        from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
-        
-        parsed = urlparse(profile_url)
-        path = parsed.path.rstrip('/')
-        
-        if 'profile.php' in path:
-            # For profile.php URLs, we need the 'id' param, and optionally change 'sk'
-            query = parse_qs(parsed.query)
-            if 'id' in query:
-                new_query = {'id': query['id']}
-                # yt-dlp prefers sk=videos for fetching video lists
-                new_query['sk'] = ['videos']
-                profile_url = urlunparse(parsed._replace(query=urlencode(new_query, doseq=True)))
-        else:
-            # For vanity URLs like /DevDucck, we want to append /reels/ or /videos/
-            if not path.endswith('/videos') and not path.endswith('/reels'):
-                path += '/videos'
-            
-            # Reconstruct URL without query params (like ?id=...) since they mess up the path
-            profile_url = urlunparse(parsed._replace(path=path, query=''))
-
         # Auto-detect previously uploaded cookies if not provided
         if not cookie_file:
             saved_cookies = os.path.join(settings.DOWNLOAD_DIR, "..", "cookies", "facebook_cookies.txt")
@@ -1334,23 +1313,63 @@ async def api_list_profile_videos(request: Request):
     from concurrent.futures import ThreadPoolExecutor
 
     def _list_videos():
-        cmd = [
-            "yt-dlp",
-            "--flat-playlist",
-            "--playlist-end", str(limit),
-            "--print", "%(id)s|||%(title)s|||%(url)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s",
-            "--no-warnings",
-            "--no-check-certificates",
-        ]
-
-        # Facebook needs cookies to access content
         if platform == "facebook":
+            import requests
+            import re
+            from http.cookiejar import MozillaCookieJar
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            
+            # Use uploaded cookies if available
+            cj = None
+            if cookie_file and os.path.exists(cookie_file):
+                cj = MozillaCookieJar(cookie_file)
+                try:
+                    cj.load(ignore_discard=True, ignore_expires=True)
+                except Exception as e:
+                    logger.error(f"Failed to load cookies for FB requests: {e}")
+            
+            try:
+                res = requests.get(profile_url, headers=headers, cookies=cj, timeout=20)
+                html = res.text
+            except Exception as e:
+                return [{"error": f"Failed to fetch Facebook page: {str(e)}"}]
+                
+            # Find all reel IDs
+            reel_ids = list(set(re.findall(r'/reel/(\d+)', html)))
+            if not reel_ids:
+                return [{"error": "Không tìm thấy video/reel nào trên trang này. (Hoặc cần upload cookies để xem nội dung ẩn)"}]
+                
+            reel_ids = reel_ids[:limit]
+            reel_urls = [f"https://www.facebook.com/reel/{rid}" for rid in reel_ids]
+            
+            cmd = [
+                "yt-dlp",
+                "--print", "%(id)s|||%(title)s|||%(url)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s",
+                "--no-warnings",
+                "--no-check-certificates",
+            ]
             if cookie_file and os.path.exists(cookie_file):
                 cmd.extend(["--cookies", cookie_file])
+            cmd.extend(reel_urls)
+            
+        else:
+            # Default logic for TikTok, YouTube, etc.
+            cmd = [
+                "yt-dlp",
+                "--flat-playlist",
+                "--playlist-end", str(limit),
+                "--print", "%(id)s|||%(title)s|||%(url)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s",
+                "--no-warnings",
+                "--no-check-certificates",
+                profile_url
+            ]
 
-        cmd.append(profile_url)
-
-        logger.info(f"Profile scan cmd: {' '.join(cmd)}")
+        logger.info(f"Profile scan cmd: {' '.join(cmd[:10])}... (truncated)")
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, encoding='utf-8', errors='replace')
