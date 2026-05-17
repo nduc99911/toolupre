@@ -1303,17 +1303,26 @@ async def api_list_profile_videos(request: Request):
 
     # ─── Normalize Facebook URLs for yt-dlp ───
     if platform == "facebook":
-        import re
-        # Convert reels_tab URL to /videos/ URL which yt-dlp understands
-        profile_url = re.sub(r'[&?]sk=reels_tab', '', profile_url)
-
-        # Ensure URL ends with /videos/ for profile pages
-        if 'profile.php' in profile_url:
-            if '/videos' not in profile_url:
-                profile_url = profile_url.rstrip('/') + '/videos/'
+        from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+        
+        parsed = urlparse(profile_url)
+        path = parsed.path.rstrip('/')
+        
+        if 'profile.php' in path:
+            # For profile.php URLs, we need the 'id' param, and optionally change 'sk'
+            query = parse_qs(parsed.query)
+            if 'id' in query:
+                new_query = {'id': query['id']}
+                # yt-dlp prefers sk=videos for fetching video lists
+                new_query['sk'] = ['videos']
+                profile_url = urlunparse(parsed._replace(query=urlencode(new_query, doseq=True)))
         else:
-            if '/videos' not in profile_url and '/reels' not in profile_url:
-                profile_url = profile_url.rstrip('/') + '/videos/'
+            # For vanity URLs like /DevDucck, we want to append /reels/ or /videos/
+            if not path.endswith('/videos') and not path.endswith('/reels'):
+                path += '/videos'
+            
+            # Reconstruct URL without query params (like ?id=...) since they mess up the path
+            profile_url = urlunparse(parsed._replace(path=path, query=''))
 
         # Auto-detect previously uploaded cookies if not provided
         if not cookie_file:
