@@ -103,14 +103,31 @@ class PostScheduler:
             if hashtags:
                 caption = f"{caption}\n\n{hashtags}"
 
-            # Publish to Facebook
-            result = await FacebookAPI.post_video(
-                page_id=post["fb_page_id"],
-                access_token=post["access_token"],
-                video_path=video_path,
-                caption=caption,
-                title=post.get("video_title", ""),
-            )
+            is_image = "Bộ ảnh" in post.get("video_title", "") or (post.get("thumbnail_path") and not post.get("original_path", "").endswith(".mp4") and os.path.isdir(video_path))
+
+            if is_image:
+                images = []
+                if os.path.isdir(video_path):
+                    valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
+                    for f in sorted(os.listdir(video_path)):
+                        if os.path.splitext(f)[1].lower() in valid_exts:
+                            images.append(os.path.join(video_path, f))
+                            
+                result = await FacebookAPI.post_images(
+                    page_id=post["fb_page_id"],
+                    access_token=post["access_token"],
+                    image_paths=images,
+                    caption=caption,
+                )
+            else:
+                # Publish to Facebook
+                result = await FacebookAPI.post_video(
+                    page_id=post["fb_page_id"],
+                    access_token=post["access_token"],
+                    video_path=video_path,
+                    caption=caption,
+                    title=post.get("video_title", ""),
+                )
 
             if result.get("success"):
                 await db.update_scheduled_post(post_id, {

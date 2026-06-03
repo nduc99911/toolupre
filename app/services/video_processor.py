@@ -97,6 +97,73 @@ class VideoProcessor:
     Video processing engine using FFmpeg.
     Applies transformations to make re-uploaded videos unique.
     """
+    
+    @staticmethod
+    async def process_images(original_dir: str, processed_dir: str, options: dict) -> bool:
+        """Process a directory of images (flip, watermark)."""
+        from PIL import Image, ImageDraw, ImageFont, ImageOps
+        import shutil
+        
+        try:
+            if not os.path.exists(processed_dir):
+                os.makedirs(processed_dir, exist_ok=True)
+                
+            valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
+            
+            for f in os.listdir(original_dir):
+                if os.path.splitext(f)[1].lower() not in valid_exts:
+                    continue
+                    
+                input_path = os.path.join(original_dir, f)
+                output_path = os.path.join(processed_dir, f)
+                
+                try:
+                    with Image.open(input_path) as img:
+                        # Convert to RGB if it's RGBA and we're saving as JPEG
+                        if img.mode in ('RGBA', 'P') and f.lower().endswith(('.jpg', '.jpeg')):
+                            img = img.convert('RGB')
+                            
+                        # Apply flip
+                        if options.get("flip"):
+                            img = ImageOps.mirror(img)
+                            
+                        # Apply watermark text
+                        if options.get("watermark") and options.get("watermark_text"):
+                            draw = ImageDraw.Draw(img)
+                            text = options.get("watermark_text", "")
+                            
+                            # Try to load a font, fallback to default
+                            try:
+                                # font size relative to image height
+                                font_size = max(14, int(img.height * 0.03))
+                                font = ImageFont.truetype("arial.ttf", font_size)
+                            except IOError:
+                                font = ImageFont.load_default()
+                                
+                            # Text bounds
+                            bbox = draw.textbbox((0, 0), text, font=font)
+                            text_w = bbox[2] - bbox[0]
+                            text_h = bbox[3] - bbox[1]
+                            
+                            # Position: random or center
+                            import random
+                            x = random.randint(10, max(11, img.width - text_w - 10))
+                            y = random.randint(10, max(11, img.height - text_h - 10))
+                            
+                            # Draw shadow
+                            draw.text((x+2, y+2), text, font=font, fill=(0, 0, 0, 128))
+                            # Draw text
+                            draw.text((x, y), text, font=font, fill=(255, 255, 255, 200))
+                            
+                        img.save(output_path, quality=90)
+                except Exception as e:
+                    logger.warning(f"Failed to process image {f}: {e}")
+                    shutil.copy2(input_path, output_path)
+                    
+            return True
+        except Exception as e:
+            logger.error(f"Image processing failed: {e}")
+            return False
 
     # Available processing options with descriptions
     AVAILABLE_OPTIONS = {

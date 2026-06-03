@@ -355,6 +355,49 @@ async function downloadBatch() {
     }
 }
 
+async function downloadImages() {
+    const url = document.getElementById('download-image-url').value.trim();
+    if (!url) {
+        showToast('Vui lòng nhập URL bài viết', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btn-download-images');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Đang tải...';
+
+    const statusEl = document.getElementById('download-image-status');
+    statusEl.innerHTML = `<span style="color:var(--text-tertiary);">Đang tiến hành trích xuất ảnh... Quá trình này có thể mất chút thời gian (đặc biệt với RedNote/Facebook).</span>`;
+
+    try {
+        const result = await api('/api/download/images', {
+            method: 'POST',
+            body: JSON.stringify({ url })
+        });
+
+        showToast(result.message, 'success');
+        
+        statusEl.innerHTML = `
+            <div style="padding:10px; background:rgba(46, 213, 115, 0.1); border-left:3px solid var(--accent-success); border-radius:4px; margin-top:8px;">
+                <div style="color:var(--accent-success); font-weight:bold; margin-bottom:4px;">✅ Hoàn tất tải ảnh</div>
+                <div style="font-size:13px; color:var(--text-secondary);">
+                    - Đã tải: <b>${result.images_count}</b> ảnh<br>
+                    - Nguồn: <b>${result.platform}</b><br>
+                    - Lưu tại: <code>${result.save_dir}</code>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('download-image-url').value = '';
+    } catch (err) {
+        showToast(`Lỗi: ${err.message}`, 'error');
+        statusEl.innerHTML = `<div style="color:var(--accent-danger); font-size:13px; margin-top:8px;">❌ ${err.message}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🖼️ Tải Ảnh Mới';
+    }
+}
+
 // Count URLs in batch textarea
 document.addEventListener('DOMContentLoaded', () => {
     const batchEl = document.getElementById('batch-urls');
@@ -882,11 +925,34 @@ async function loadVideoSelects() {
 function showProcessPreview(videoId) {
     const preview = document.getElementById('process-preview');
     const player = document.getElementById('process-video-player');
+    
+    // Add image preview fallback if it doesn't exist
+    let imgPlayer = document.getElementById('process-image-player');
+    if (!imgPlayer) {
+        imgPlayer = document.createElement('img');
+        imgPlayer.id = 'process-image-player';
+        imgPlayer.style.cssText = 'width:100%; max-height:300px; border-radius:12px; object-fit:contain; display:none;';
+        player.parentNode.insertBefore(imgPlayer, player.nextSibling);
+    }
+    
     if (videoId) {
-        player.src = `/api/file/${videoId}/original`;
+        const video = state.videos.find(v => v.id === videoId);
+        if (video && (video.title.includes('Bộ ảnh') || (video.duration === 0 && video.thumbnail_path))) {
+            player.style.display = 'none';
+            player.src = '';
+            imgPlayer.style.display = 'block';
+            imgPlayer.src = `/api/file/${videoId}/thumbnail`;
+        } else {
+            imgPlayer.style.display = 'none';
+            imgPlayer.src = '';
+            player.style.display = 'block';
+            player.src = `/api/file/${videoId}/original`;
+        }
         preview.style.display = 'block';
     } else {
         preview.style.display = 'none';
+        player.src = '';
+        if(imgPlayer) imgPlayer.src = '';
     }
 }
 
@@ -1127,17 +1193,38 @@ function selectPage(pageId, el) {
 function showPublishPreview(videoId) {
     const area = document.getElementById('publish-preview-area');
     const player = document.getElementById('publish-video-player');
+    
+    // Add image preview fallback if it doesn't exist
+    let imgPlayer = document.getElementById('publish-image-player');
+    if (!imgPlayer) {
+        imgPlayer = document.createElement('img');
+        imgPlayer.id = 'publish-image-player';
+        imgPlayer.style.cssText = 'width:100%; max-height:400px; border-radius:12px; object-fit:contain; display:none;';
+        player.parentNode.insertBefore(imgPlayer, player.nextSibling);
+    }
+
     if (videoId) {
-        // Try processed first, fallback to original
         const video = state.videos.find(v => v.id === videoId);
-        if (video?.processed_path) {
-            player.src = `/api/file/${videoId}/processed`;
+        if (video && (video.title.includes('Bộ ảnh') || (video.duration === 0 && video.thumbnail_path))) {
+            player.style.display = 'none';
+            player.src = '';
+            imgPlayer.style.display = 'block';
+            imgPlayer.src = `/api/file/${videoId}/thumbnail`;
         } else {
-            player.src = `/api/file/${videoId}/original`;
+            imgPlayer.style.display = 'none';
+            imgPlayer.src = '';
+            player.style.display = 'block';
+            if (video?.processed_path) {
+                player.src = `/api/file/${videoId}/processed`;
+            } else {
+                player.src = `/api/file/${videoId}/original`;
+            }
         }
         area.style.display = 'block';
     } else {
         area.style.display = 'none';
+        player.src = '';
+        if(imgPlayer) imgPlayer.src = '';
     }
 }
 
@@ -1526,6 +1613,12 @@ async function loadSettings() {
         fbEl.textContent = data.has_fb_app ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình';
         fbEl.className = `badge ${data.has_fb_app ? 'badge-processed' : 'badge-pending'}`;
 
+        const shopeeEl = document.getElementById('setting-shopee');
+        if (shopeeEl) {
+            shopeeEl.textContent = data.has_shopee_api ? '✅ Đã cấu hình' : '⚠️ Chưa cấu hình';
+            shopeeEl.className = `badge ${data.has_shopee_api ? 'badge-processed' : 'badge-pending'}`;
+        }
+
         document.getElementById('setting-ffmpeg').textContent = data.ffmpeg_path || 'system PATH';
         document.getElementById('setting-download-dir').textContent = data.download_dir || '--';
         document.getElementById('setting-processed-dir').textContent = data.processed_dir || '--';
@@ -1659,25 +1752,99 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ─── Video Modal ───
-function openVideoModal(videoId) {
+let currentModalImages = [];
+let currentModalImageIndex = 0;
+
+async function openVideoModal(videoId) {
     const video = state.videos.find(v => v.id === videoId);
     if (!video) return;
 
-    const title = video.title || video.original_filename || 'Video Player';
+    const title = video.title || video.original_filename || 'Media Viewer';
     document.getElementById('video-modal-title').textContent = title.substring(0, 60);
 
-    const player = document.getElementById('video-modal-player');
-    const pathType = video.processed_path ? 'processed' : 'original';
-    player.src = `/api/file/${videoId}/${pathType}`;
+    const vidPlayer = document.getElementById('video-modal-player');
+    const imgContainer = document.getElementById('image-modal-container');
+    const imgPlayer = document.getElementById('image-modal-player');
+
+    // Detect if it's an image post
+    const isImage = title.includes('Bộ ảnh') || (video.duration === 0 && video.thumbnail_path && !video.original_filename.endsWith('.mp4'));
+
+    if (isImage) {
+        vidPlayer.style.display = 'none';
+        vidPlayer.pause();
+        vidPlayer.src = '';
+        
+        imgContainer.style.display = 'block';
+        imgPlayer.src = `/api/file/${videoId}/thumbnail`; // show thumb first while loading
+        document.getElementById('img-counter').textContent = 'Loading...';
+        
+        // Fetch all images
+        try {
+            const data = await api(`/api/videos/${videoId}/images`);
+            currentModalImages = data.images || [];
+            currentModalImageIndex = 0;
+            updateImageModal();
+        } catch(e) {
+            console.error('Failed to load images', e);
+        }
+    } else {
+        imgContainer.style.display = 'none';
+        imgPlayer.src = '';
+        
+        vidPlayer.style.display = 'block';
+        const pathType = video.processed_path ? 'processed' : 'original';
+        vidPlayer.src = `/api/file/${videoId}/${pathType}`;
+        setTimeout(() => { vidPlayer.play().catch(e => console.log('Auto-play blocked:', e)); }, 100);
+    }
 
     document.getElementById('video-modal-overlay').classList.add('active');
-    setTimeout(() => { player.play().catch(e => console.log('Auto-play blocked:', e)); }, 100);
+}
+
+function updateImageModal() {
+    const imgPlayer = document.getElementById('image-modal-player');
+    const counter = document.getElementById('img-counter');
+    const prevBtn = document.getElementById('img-prev-btn');
+    const nextBtn = document.getElementById('img-next-btn');
+    
+    if (currentModalImages.length === 0) {
+        counter.textContent = 'No images';
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        return;
+    }
+    
+    imgPlayer.src = currentModalImages[currentModalImageIndex];
+    counter.textContent = `${currentModalImageIndex + 1} / ${currentModalImages.length}`;
+    
+    prevBtn.style.display = currentModalImageIndex > 0 ? 'block' : 'none';
+    nextBtn.style.display = currentModalImageIndex < currentModalImages.length - 1 ? 'block' : 'none';
+}
+
+function prevImage() {
+    if (currentModalImageIndex > 0) {
+        currentModalImageIndex--;
+        updateImageModal();
+    }
+}
+
+function nextImage() {
+    if (currentModalImageIndex < currentModalImages.length - 1) {
+        currentModalImageIndex++;
+        updateImageModal();
+    }
 }
 
 function closeVideoModal() {
     document.getElementById('video-modal-overlay').classList.remove('active');
-    document.getElementById('video-modal-player').pause();
-    document.getElementById('video-modal-player').src = '';
+    const vidPlayer = document.getElementById('video-modal-player');
+    if (vidPlayer) {
+        vidPlayer.pause();
+        vidPlayer.src = '';
+    }
+    const imgPlayer = document.getElementById('image-modal-player');
+    if (imgPlayer) {
+        imgPlayer.src = '';
+    }
 }
 
 // ═══════════════════════════════════════════
@@ -1902,48 +2069,6 @@ function renderRecentActivity(activities) {
 // ═══════════════════════════════════════════
 let profileVideos = [];
 
-// Auto-show cookies upload for Facebook URLs
-(function() {
-    const profileInput = document.getElementById('profile-url');
-    if (profileInput) {
-        profileInput.addEventListener('input', function() {
-            const val = this.value.toLowerCase();
-            const cookieGroup = document.getElementById('fb-cookies-group');
-            if (cookieGroup) {
-                cookieGroup.style.display = (val.includes('facebook.com') || val.includes('fb.com') || val.includes('fb.watch')) ? 'block' : 'none';
-            }
-        });
-    }
-})();
-
-// Upload Facebook cookies.txt
-let fbCookieFilePath = '';
-async function uploadFBCookies() {
-    const fileInput = document.getElementById('fb-cookies-file');
-    if (!fileInput.files.length) {
-        showToast('Chọn file cookies.txt trước', 'warning');
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    try {
-        const resp = await fetch('/api/upload-cookies', { method: 'POST', body: formData });
-        const data = await resp.json();
-        if (data.success) {
-            fbCookieFilePath = data.path;
-            document.getElementById('fb-cookies-status').innerHTML = '<span style="color:var(--accent-success);">✅ Upload thành công!</span>';
-            showToast('Cookies đã được upload!', 'success');
-        } else {
-            throw new Error(data.detail || 'Upload failed');
-        }
-    } catch (err) {
-        showToast(`Lỗi upload: ${err.message}`, 'error');
-        document.getElementById('fb-cookies-status').innerHTML = `<span style="color:var(--accent-danger);">❌ ${err.message}</span>`;
-    }
-}
-
 async function scanProfile() {
     const url = document.getElementById('profile-url').value.trim();
     const limit = document.getElementById('profile-limit').value || 30;
@@ -1952,23 +2077,12 @@ async function scanProfile() {
     const btn = document.getElementById('btn-scan-profile');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Đang quét...';
-
-    const isFacebook = url.toLowerCase().includes('facebook.com') || url.toLowerCase().includes('fb.com');
-    const statusMsg = isFacebook
-        ? '🔍 Đang quét Facebook Reels, có thể mất 1-2 phút...'
-        : '🔍 Đang quét profile, có thể mất 30-60s...';
-    document.getElementById('profile-scan-status').innerHTML = `<div class="badge badge-processing">${statusMsg}</div>`;
+    document.getElementById('profile-scan-status').innerHTML = '<div class="badge badge-processing">🔍 Đang quét profile, có thể mất 30-60s...</div>';
 
     try {
-        const body = { url, limit: parseInt(limit) };
-        // Send cookie file path if available (for Facebook)
-        if (isFacebook && fbCookieFilePath) {
-            body.cookie_file = fbCookieFilePath;
-        }
-
         const data = await api('/api/profile/list-videos', {
             method: 'POST',
-            body: JSON.stringify(body),
+            body: JSON.stringify({ url, limit: parseInt(limit) }),
         });
 
         profileVideos = data.videos || [];
@@ -2271,6 +2385,107 @@ async function generateAffiliateCaption() {
         btn.disabled = false;
         btn.innerHTML = '🤖 AI tạo Caption Affiliate';
     }
+}
+
+async function autoConvertShopeeLink() {
+    const linkInput = document.getElementById('aff-product-link');
+    const rawLink = linkInput.value.trim();
+    if (!rawLink) {
+        showToast('Vui lòng nhập link sản phẩm Shopee thô', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('btn-convert-shopee');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Đang chuyển đổi...';
+
+    try {
+        const result = await api('/api/affiliate/convert', {
+            method: 'POST',
+            body: JSON.stringify({ product_url: rawLink })
+        });
+        
+        if (result.success && result.short_link) {
+            linkInput.value = result.short_link;
+            showToast('✅ Đã chuyển đổi sang link affiliate thành công!', 'success');
+        } else {
+            showToast('Không thể chuyển đổi link. Vui lòng kiểm tra lại cấu hình Shopee API!', 'warning');
+        }
+    } catch (err) {
+        console.error(err);
+        showToast(`Lỗi: ${err.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+async function searchShopeeProductsUI() {
+    const keywordInput = document.getElementById('aff-keywords');
+    const keyword = keywordInput.value.trim();
+    if (!keyword) {
+        showToast('Vui lòng nhập từ khóa sản phẩm để tìm kiếm', 'warning');
+        keywordInput.focus();
+        return;
+    }
+
+    const btn = document.getElementById('btn-search-shopee-ui');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '🔍 Đang tìm...';
+
+    const panel = document.getElementById('shopee-products-panel');
+    const list = document.getElementById('shopee-products-list');
+    
+    try {
+        const result = await api(`/api/affiliate/search?keyword=${encodeURIComponent(keyword)}&limit=6`);
+        list.innerHTML = '';
+        
+        if (result.success && result.products && result.products.length > 0) {
+            panel.style.display = 'block';
+            
+            result.products.forEach(p => {
+                const item = document.createElement('div');
+                item.style = 'display: flex; gap: 10px; align-items: center; background: var(--bg-secondary); padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);';
+                
+                const commissionRatePercent = (p.commissionRate * 100).toFixed(1);
+                
+                item.innerHTML = `
+                    <img src="${p.imageUrl || '🛍️'}" style="width: 40px; height: 40px; object-fit: cover; border-radius: var(--radius-sm);" onerror="this.src='🛍️'">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary);">${p.productName}</div>
+                        <div style="display: flex; gap: 10px; font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
+                            <span>💰 Giá: ${parseFloat(p.price).toLocaleString()}đ</span>
+                            <span style="color: #ee4d2d; font-weight: 600;">📈 Hoa hồng: ${commissionRatePercent}%</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="selectShopeeProduct('${p.productLink}', '${p.productName}')" style="font-size: 10px; padding: 2px 8px; height: auto;">Chọn</button>
+                `;
+                list.appendChild(item);
+            });
+        } else {
+            showToast('Không tìm thấy sản phẩm gợi ý nào. Hãy thử từ khóa khác!', 'warning');
+            panel.style.display = 'none';
+        }
+    } catch (err) {
+        console.error(err);
+        showToast('Lỗi tìm kiếm sản phẩm. Vui lòng kiểm tra lại cấu hình Shopee API!', 'error');
+        panel.style.display = 'none';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+function selectShopeeProduct(link, name) {
+    document.getElementById('aff-product-link').value = link;
+    
+    // Auto convert the product link to affiliate immediately!
+    autoConvertShopeeLink();
+    
+    // Hide panel
+    document.getElementById('shopee-products-panel').style.display = 'none';
 }
 
 function copyToClipboard(elementId) {
@@ -2624,3 +2839,37 @@ function renderAnalyticsCharts(pages) {
     });
 }
 
+// ═══════════════════════════════════════════
+// SHOPEE AFFILIATE
+// ═══════════════════════════════════════════
+
+async function autoConvertShopeeLink() {
+    const input = document.getElementById('aff-product-link');
+    const btn = document.getElementById('btn-convert-shopee');
+    
+    if (!input || !input.value.trim()) {
+        showToast('Vui lòng dán link Shopee vào ô', 'warning');
+        return;
+    }
+    
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;"></span> Đang chuyển...';
+    
+    try {
+        const res = await api('/api/affiliate/convert', {
+            method: 'POST',
+            body: JSON.stringify({ url: input.value.trim() })
+        });
+        
+        if (res.success && res.short_link) {
+            input.value = res.short_link;
+            showToast('Chuyển đổi link Affiliate thành công!', 'success');
+        }
+    } catch (err) {
+        showToast('Lỗi: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}

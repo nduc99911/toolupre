@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     FB_APP_ID: str = ""
     FB_APP_SECRET: str = ""
 
+    # Shopee Affiliate API
+    SHOPEE_APP_ID: str = ""
+    SHOPEE_APP_SECRET: str = ""
+    SHOPEE_AFFILIATE_ID: str = ""
+
+    # Telegram Bot
+    TELEGRAM_BOT_TOKEN: str = ""
+
     # FFmpeg
     FFMPEG_PATH: str = ""
 

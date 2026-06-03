@@ -24,6 +24,8 @@ from app.services.ai_service import rewrite_text, generate_caption, generate_has
 from app.services.facebook_api import FacebookAPI
 from app.services.scheduler import post_scheduler
 from app.services.process_queue import process_queue
+from app.services.image_downloader import download_images_from_url
+from app.services.affiliate_service import convert_shopee_link_to_affiliate
 
 
 # ─── In-Memory Log Handler ───
@@ -86,6 +88,12 @@ templates = Jinja2Templates(directory=templates_dir)
 async def startup():
     await db.init_db()
     post_scheduler.start()
+    
+    # Start Telegram Bot in background
+    import asyncio
+    from app.services.telegram_bot import start_telegram_bot
+    asyncio.create_task(start_telegram_bot())
+    
     logger.info("ReupMaster Pro started!")
 
 
@@ -124,11 +132,72 @@ async def api_stats():
 # API: DOWNLOAD
 # ═══════════════════════════════════════════
 
+@app.post("/api/affiliate/convert")
+async def api_convert_shopee(request: Request):
+    """Convert a normal Shopee link to an Affiliate link using the official API."""
+    data = await request.json()
+    url = data.get("url", "").strip()
+    
+    if not url:
+        raise HTTPException(400, "Vui lòng nhập link Shopee")
+        
+    try:
+        short_link = await convert_shopee_link_to_affiliate(url)
+        if not short_link:
+            raise HTTPException(400, "Không thể chuyển đổi. Vui lòng kiểm tra lại link hoặc cấu hình Shopee.")
+        return {"success": True, "short_link": short_link, "message": "Chuyển đổi thành công!"}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/download/images")
+async def api_download_images(request: Request):
+    """Download images from a URL (TikTok Slideshow, Facebook, RedNote)."""
+    import re
+    data = await request.json()
+    raw_url = data.get("url", "").strip()
+    
+    url_match = re.search(r'(https?://[^\s]+)', raw_url)
+    url = url_match.group(1) if url_match else raw_url
+
+    if not url:
+        raise HTTPException(400, "URL is required")
+
+    result = await download_images_from_url(url)
+    
+    if result.get("error"):
+        raise HTTPException(400, result["error"])
+        
+    # Create DB record so it shows up in Library
+    thumbnail = result["images"][0] if result["images"] else ""
+    await db.create_video({
+        "id": result["id"],
+        "source_url": url,
+        "source_platform": result["platform"],
+        "status": "downloaded",
+        "title": f"Bộ ảnh {result['platform']} ({len(result['images'])} ảnh)",
+        "original_path": result["save_dir"],
+        "thumbnail_path": thumbnail,
+    })
+        
+    return {
+        "id": result["id"],
+        "platform": result["platform"],
+        "save_dir": result["save_dir"],
+        "images_count": len(result["images"]),
+        "message": f"Successfully downloaded {len(result['images'])} images to {result['save_dir']}"
+    }
+
+
 @app.post("/api/download")
 async def api_download(request: Request):
     """Download a single video."""
+    import re
     data = await request.json()
-    url = data.get("url", "").strip()
+    raw_url = data.get("url", "").strip()
+    
+    url_match = re.search(r'(https?://[^\s]+)', raw_url)
+    url = url_match.group(1) if url_match else raw_url
 
     if not url:
         raise HTTPException(400, "URL is required")
@@ -928,14 +997,32 @@ async def api_publish_video(request: Request):
     if final_hashtags:
         full_caption = f"{final_caption}\n\n{final_hashtags}"
 
-    # Publish
-    result = await FacebookAPI.post_video(
-        page_id=page["page_id"],
-        access_token=page["access_token"],
-        video_path=video_path,
-        caption=full_caption,
-        title=video.get("ai_title") or video.get("title", ""),
-    )
+    is_image = "Bộ ảnh" in video.get("title", "") or (video.get("duration", 1) == 0 and video.get("thumbnail_path") and not video.get("original_filename", "").endswith(".mp4"))
+
+    if is_image:
+        # Collect all images in directory
+        images = []
+        if os.path.isdir(video_path):
+            valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
+            for f in sorted(os.listdir(video_path)):
+                if os.path.splitext(f)[1].lower() in valid_exts:
+                    images.append(os.path.join(video_path, f))
+        
+        result = await FacebookAPI.post_images(
+            page_id=page["page_id"],
+            access_token=page["access_token"],
+            image_paths=images,
+            caption=full_caption,
+        )
+    else:
+        # Publish video
+        result = await FacebookAPI.post_video(
+            page_id=page["page_id"],
+            access_token=page["access_token"],
+            video_path=video_path,
+            caption=full_caption,
+            title=video.get("ai_title") or video.get("title", ""),
+        )
 
     if result.get("success"):
         await db.update_video(video_id, {"status": "published"})
@@ -1034,6 +1121,8 @@ async def api_get_settings():
         "has_openai_key": bool(settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != "sk-your-openai-key-here"),
         "has_gemini_key": bool(settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "your-gemini-key-here"),
         "has_fb_app": bool(settings.FB_APP_ID and settings.FB_APP_ID != "your-fb-app-id"),
+        "has_shopee_api": bool(settings.SHOPEE_APP_ID and settings.SHOPEE_APP_SECRET),
+        "shopee_affiliate_id": settings.SHOPEE_AFFILIATE_ID,
         "ffmpeg_path": settings.FFMPEG_PATH or "system PATH",
         "download_dir": settings.DOWNLOAD_DIR,
         "processed_dir": settings.PROCESSED_DIR,
@@ -1044,6 +1133,32 @@ async def api_get_settings():
 # ═══════════════════════════════════════════
 # SERVE VIDEO FILES
 # ═══════════════════════════════════════════
+
+@app.get("/api/videos/{video_id}/images")
+async def api_get_video_images(video_id: str):
+    """Get all image URLs for an image collection post."""
+    video = await db.get_video(video_id)
+    if not video:
+        raise HTTPException(404, "Not found")
+    
+    path = video.get("processed_path") or video.get("original_path", "")
+    if not path or not os.path.isdir(path):
+        return {"images": []}
+        
+    images = []
+    valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
+    try:
+        for f in sorted(os.listdir(path)):
+            if os.path.splitext(f)[1].lower() in valid_exts:
+                full_path = os.path.join(path, f)
+                if "storage" in full_path:
+                    rel = full_path.replace("\\", "/").split("/storage/")[-1]
+                    images.append(f"/storage/{rel}")
+    except Exception as e:
+        logger.error(f"Error listing images: {e}")
+        
+    return {"images": images}
+
 
 @app.get("/api/file/{video_id}/{file_type}")
 async def api_serve_file(video_id: str, file_type: str):
@@ -1253,157 +1368,52 @@ Trả về JSON:
 
 
 # ═══════════════════════════════════════════
-# API: UPLOAD COOKIES (for Facebook Reels scraping)
-# ═══════════════════════════════════════════
-
-@app.post("/api/upload-cookies")
-async def api_upload_cookies(request: Request):
-    """Upload a cookies.txt file for yt-dlp to use with Facebook."""
-    from starlette.datastructures import UploadFile
-    import aiofiles
-
-    form = await request.form()
-    file = form.get("file")
-
-    if not file:
-        raise HTTPException(400, "No file uploaded")
-
-    # Save to storage directory
-    cookies_dir = os.path.join(settings.DOWNLOAD_DIR, "..", "cookies")
-    os.makedirs(cookies_dir, exist_ok=True)
-    cookie_path = os.path.join(cookies_dir, "facebook_cookies.txt")
-
-    content = await file.read()
-    with open(cookie_path, "wb") as f:
-        f.write(content)
-
-    logger.info(f"Cookies uploaded: {cookie_path} ({len(content)} bytes)")
-    return {"success": True, "path": os.path.abspath(cookie_path), "size": len(content)}
-
-
-# ═══════════════════════════════════════════
 # API: BULK PROFILE DOWNLOAD (SO9 9Downloader)
 # ═══════════════════════════════════════════
 
 @app.post("/api/profile/list-videos")
 async def api_list_profile_videos(request: Request):
     """
-    List all videos from a user profile URL (TikTok, Douyin, YouTube, Facebook).
-    Uses yt-dlp for all platforms. Facebook uses --cookies-from-browser.
+    List all videos from a user profile URL (TikTok, Douyin, YouTube).
+    Uses yt-dlp --flat-playlist to enumerate without downloading.
     """
     data = await request.json()
     profile_url = data.get("url", "").strip()
     limit = int(data.get("limit", 30))
-    cookie_file = data.get("cookie_file", "")  # Optional: path to cookies.txt
 
     if not profile_url:
         raise HTTPException(400, "Profile URL is required")
-
-    platform = detect_platform(profile_url)
-
-    # ─── Facebook Reels Scraper setup ───
-    if platform == "facebook":
-        # Auto-detect previously uploaded cookies if not provided
-        if not cookie_file:
-            saved_cookies = os.path.join(settings.DOWNLOAD_DIR, "..", "cookies", "facebook_cookies.txt")
-            if os.path.exists(saved_cookies):
-                cookie_file = os.path.abspath(saved_cookies)
 
     import subprocess
     from concurrent.futures import ThreadPoolExecutor
 
     def _list_videos():
-        if platform == "facebook":
-            import requests
-            import re
-            from http.cookiejar import MozillaCookieJar
-            
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html",
-                "Accept-Language": "en-US,en;q=0.9",
-            }
-            
-            # Use uploaded cookies if available
-            cj = None
-            if cookie_file and os.path.exists(cookie_file):
-                cj = MozillaCookieJar(cookie_file)
-                try:
-                    cj.load(ignore_discard=True, ignore_expires=True)
-                except Exception as e:
-                    logger.error(f"Failed to load cookies for FB requests: {e}")
-            
-            try:
-                res = requests.get(profile_url, headers=headers, cookies=cj, timeout=20)
-                html = res.text
-            except Exception as e:
-                return [{"error": f"Failed to fetch Facebook page: {str(e)}"}]
-                
-            # Find all reel IDs
-            reel_ids = list(set(re.findall(r'/reel/(\d+)', html)))
-            if not reel_ids:
-                return [{"error": "Không tìm thấy video/reel nào trên trang này. (Hoặc cần upload cookies để xem nội dung ẩn)"}]
-                
-            reel_ids = reel_ids[:limit]
-            reel_urls = [f"https://www.facebook.com/reel/{rid}" for rid in reel_ids]
-            
-            cmd = [
-                "yt-dlp",
-                "--print", "%(id)s|||%(title)s|||%(url)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s",
-                "--no-warnings",
-                "--no-check-certificates",
-            ]
-            if cookie_file and os.path.exists(cookie_file):
-                cmd.extend(["--cookies", cookie_file])
-            cmd.extend(reel_urls)
-            
-        else:
-            # Default logic for TikTok, YouTube, etc.
-            cmd = [
-                "yt-dlp",
-                "--flat-playlist",
-                "--playlist-end", str(limit),
-                "--print", "%(id)s|||%(title)s|||%(url)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s",
-                "--no-warnings",
-                "--no-check-certificates",
-                profile_url
-            ]
-
-        logger.info(f"Profile scan cmd: {' '.join(cmd[:10])}... (truncated)")
-
+        cmd = [
+            "yt-dlp",
+            "--flat-playlist",
+            "--playlist-end", str(limit),
+            "--print", "%(id)s|||%(title)s|||%(url)s|||%(duration)s|||%(view_count)s|||%(thumbnail)s",
+            "--no-warnings",
+            "--no-check-certificates",
+            profile_url,
+        ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, encoding='utf-8', errors='replace')
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, encoding='utf-8', errors='replace')
             videos = []
-
-            if result.returncode != 0 and not result.stdout.strip():
-                error_msg = result.stderr.strip() if result.stderr else "yt-dlp failed"
-                # Extract meaningful error
-                for line in error_msg.split('\n'):
-                    if 'ERROR' in line:
-                        return [{"error": line.strip()}]
-                return [{"error": f"Quét thất bại. Đảm bảo bạn đã đăng nhập Facebook trên Chrome. Chi tiết: {error_msg[-300:]}"}]
-
             for line in result.stdout.strip().split("\n"):
                 if "|||" not in line:
                     continue
                 parts = line.split("|||")
                 if len(parts) >= 3:
-                    vid_url = parts[2] if len(parts) > 2 and parts[2] != "NA" else ""
-                    # Make sure Facebook URLs are complete
-                    if vid_url and not vid_url.startswith("http"):
-                        vid_url = f"https://www.facebook.com{vid_url}" if vid_url.startswith("/") else f"https://www.facebook.com/{vid_url}"
-
                     videos.append({
                         "id": parts[0] if parts[0] != "NA" else "",
-                        "title": parts[1] if len(parts) > 1 and parts[1] != "NA" else "Facebook Video",
-                        "url": vid_url,
+                        "title": parts[1] if len(parts) > 1 and parts[1] != "NA" else "Untitled",
+                        "url": parts[2] if len(parts) > 2 and parts[2] != "NA" else "",
                         "duration": parts[3] if len(parts) > 3 and parts[3] != "NA" else "0",
                         "views": parts[4] if len(parts) > 4 and parts[4] != "NA" else "0",
                         "thumbnail": parts[5] if len(parts) > 5 and parts[5] != "NA" else "",
                     })
             return videos
-        except subprocess.TimeoutExpired:
-            return [{"error": "Quét quá lâu (timeout 120s). Thử giảm số lượng video."}]
         except Exception as e:
             return [{"error": str(e)}]
 
@@ -1487,6 +1497,30 @@ async def api_affiliate_caption(request: Request):
         raise HTTPException(500, result["error"])
 
     return result
+
+
+@app.post("/api/affiliate/convert")
+async def api_affiliate_convert(request: Request):
+    """Automatically convert a raw Shopee product link to an affiliate link."""
+    data = await request.json()
+    product_url = data.get("product_url", "").strip()
+    if not product_url:
+        raise HTTPException(400, "Product URL is required")
+        
+    from app.services.affiliate_service import convert_shopee_link_to_affiliate
+    short_link = await convert_shopee_link_to_affiliate(product_url)
+    return {"success": True, "short_link": short_link}
+
+
+@app.get("/api/affiliate/search")
+async def api_affiliate_search(keyword: str, limit: int = 5):
+    """Search Shopee products for affiliate marketing."""
+    if not keyword:
+        raise HTTPException(400, "Keyword is required")
+        
+    from app.services.affiliate_service import search_shopee_products
+    products = await search_shopee_products(keyword, limit)
+    return {"success": True, "products": products}
 
 
 # ═══════════════════════════════════════════

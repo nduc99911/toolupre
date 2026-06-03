@@ -177,3 +177,157 @@ def get_affiliate_platforms() -> list[dict]:
         }
         for k, v in AFFILIATE_PLATFORMS.items()
     ]
+
+
+async def convert_shopee_link_to_affiliate(product_url: str) -> str:
+    """
+    Automated Conversion of standard Shopee product URL to Affiliate URL using Shopee Affiliate OpenAPI GraphQL.
+    Requires SHOPEE_APP_ID and SHOPEE_APP_SECRET in .env.
+    """
+    if not settings.SHOPEE_APP_ID or not settings.SHOPEE_APP_SECRET:
+        # Fallback to simple template link or raw url
+        return build_shopee_affiliate_link(product_url, settings.SHOPEE_AFFILIATE_ID)
+
+    import time
+    import hashlib
+    import hmac
+    import json
+    import httpx
+
+    # Endpoints vary by country (e.g. open-api.affiliate.shopee.vn, open-api.affiliate.shopee.sg)
+    # Detect appropriate domain or default to VN
+    domain = "open-api.affiliate.shopee.vn"
+    if ".vn" not in product_url.lower():
+        # Fallback based on domain extension in target product url
+        for ext in [".sg", ".ph", ".my", ".co.id", ".com.br"]:
+            if ext in product_url.lower():
+                domain = f"open-api.affiliate.shopee{ext}"
+                break
+
+    url = f"https://{domain}/graphql"
+    
+    query = """
+    mutation generateBatchShortLink($input: GenerateBatchShortLinkInput!) {
+        generateBatchShortLink(input: $input) {
+            shortLinkList {
+                shortLink
+                longLink
+            }
+        }
+    }
+    """
+    
+    variables = {
+        "input": {
+            "originLinkList": [product_url]
+        }
+    }
+    
+    payload = {
+        "query": query,
+        "variables": variables
+    }
+    
+    payload_str = json.dumps(payload, separators=(',', ':'))
+    timestamp = int(time.time())
+    
+    # AppID + Timestamp + Payload + Secret
+    base_string = f"{settings.SHOPEE_APP_ID}{timestamp}{payload_str}{settings.SHOPEE_APP_SECRET}"
+    
+    signature = hmac.new(
+        settings.SHOPEE_APP_SECRET.encode('utf-8'),
+        base_string.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'SHA256 Credential={settings.SHOPEE_APP_ID},Timestamp={timestamp},Signature={signature}'
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, data=payload_str, headers=headers)
+            res_data = response.json()
+            if "errors" in res_data:
+                logger.error(f"Shopee Affiliate API error: {res_data['errors']}")
+                return build_shopee_affiliate_link(product_url, settings.SHOPEE_AFFILIATE_ID)
+            
+            short_links = res_data.get("data", {}).get("generateBatchShortLink", {}).get("shortLinkList", [])
+            if short_links:
+                return short_links[0].get("shortLink", product_url)
+    except Exception as e:
+        logger.error(f"Failed to call Shopee Affiliate API: {e}")
+        
+    return build_shopee_affiliate_link(product_url, settings.SHOPEE_AFFILIATE_ID)
+
+
+async def search_shopee_products(keyword: str, limit: int = 5) -> list:
+    """
+    Search Shopee products for affiliate marketing using Shopee Affiliate API.
+    """
+    if not settings.SHOPEE_APP_ID or not settings.SHOPEE_APP_SECRET:
+        return []
+        
+    import time
+    import hashlib
+    import hmac
+    import json
+    import httpx
+
+    # Default to open-api.affiliate.shopee.vn for search
+    url = "https://open-api.affiliate.shopee.vn/graphql"
+    
+    query = """
+    query productOfferV2($keyword: String, $limit: Int) {
+        productOfferV2(keyword: $keyword, limit: $limit, listType: 0) {
+            nodes {
+                itemId
+                shopId
+                productName
+                productLink
+                imageUrl
+                price
+                commissionRate
+                commission
+            }
+        }
+    }
+    """
+    
+    variables = {
+        "keyword": keyword,
+        "limit": limit
+    }
+    
+    payload = {
+        "query": query,
+        "variables": variables
+    }
+    
+    payload_str = json.dumps(payload, separators=(',', ':'))
+    timestamp = int(time.time())
+    base_string = f"{settings.SHOPEE_APP_ID}{timestamp}{payload_str}{settings.SHOPEE_APP_SECRET}"
+    
+    signature = hmac.new(
+        settings.SHOPEE_APP_SECRET.encode('utf-8'),
+        base_string.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'SHA256 Credential={settings.SHOPEE_APP_ID},Timestamp={timestamp},Signature={signature}'
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, data=payload_str, headers=headers)
+            res_data = response.json()
+            if "errors" in res_data:
+                logger.error(f"Shopee Affiliate Search API error: {res_data['errors']}")
+                return []
+            return res_data.get("data", {}).get("productOfferV2", {}).get("nodes", [])
+    except Exception as e:
+        logger.error(f"Failed to search Shopee products: {e}")
+        return []

@@ -46,7 +46,42 @@ class ProcessQueue:
                 
                 # Execute processing
                 try:
-                    await VideoProcessor.process_video(video_id, options)
+                    import os
+                    import json
+                    from app.config import settings
+                    
+                    video = await db.get_video(video_id)
+                    if not video:
+                        raise Exception("Video not found in DB")
+                        
+                    is_image = "Bộ ảnh" in video.get("title", "") or (video.get("duration", 1) == 0 and video.get("thumbnail_path") and not video.get("original_filename", "").endswith(".mp4"))
+                    
+                    if is_image:
+                        orig = video.get("original_path")
+                        if orig and os.path.isdir(orig):
+                            processed_dir = os.path.join(settings.PROCESSED_DIR, os.path.basename(orig))
+                            success = await VideoProcessor.process_images(orig, processed_dir, options)
+                            if success:
+                                # Update thumbnail to processed image
+                                new_thumb = video.get("thumbnail_path")
+                                valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
+                                for f in sorted(os.listdir(processed_dir)):
+                                    if os.path.splitext(f)[1].lower() in valid_exts:
+                                        new_thumb = os.path.join(processed_dir, f)
+                                        break
+                                        
+                                await db.update_video(video_id, {
+                                    "status": "processed",
+                                    "processed_path": processed_dir,
+                                    "thumbnail_path": new_thumb,
+                                    "processing_options": json.dumps(options)
+                                })
+                            else:
+                                await db.update_video(video_id, {"status": "failed", "error_message": "Image processing failed"})
+                        else:
+                            await db.update_video(video_id, {"status": "failed", "error_message": "Original image directory not found"})
+                    else:
+                        await VideoProcessor.process_video(video_id, options)
                 except Exception as e:
                     logger.error(f"Queue error processing {video_id}: {e}")
                     await db.update_video(video_id, {

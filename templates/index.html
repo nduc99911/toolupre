@@ -290,6 +290,22 @@
                             </div>
                             <div id="batch-status" style="margin-top: 16px;"></div>
                         </div>
+
+                        <div class="card" style="grid-column: 1 / -1;">
+                            <div class="card-header">
+                                <div class="card-title"><span class="icon">🖼️</span> Tải Hình Ảnh (Facebook, RedNote, TikTok Slideshow)</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">URL Bài Viết</label>
+                                <div class="url-input-wrapper">
+                                    <input type="text" class="form-input" id="download-image-url" placeholder="Dán link Facebook, RedNote (Xiaohongshu), TikTok...">
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary btn-lg" id="btn-download-images" onclick="downloadImages()" style="width:100%;">
+                                🖼️ Tải Ảnh Mới
+                            </button>
+                            <div id="download-image-status" style="margin-top: 16px;"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -298,37 +314,17 @@
                     <div class="two-col">
                         <div class="card">
                             <div class="card-header">
-                                <div class="card-title"><span class="icon">🔍</span> Quét Profile / Reels</div>
+                                <div class="card-title"><span class="icon">🔍</span> Quét Profile</div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">URL Profile (TikTok, YouTube, Facebook Reels...)</label>
+                                <label class="form-label">URL Profile (TikTok, Douyin, YouTube...)</label>
                                 <input type="text" class="form-input" id="profile-url"
-                                    placeholder="https://www.facebook.com/profile.php?id=xxx hoặc TikTok/YouTube URL">
-                            </div>
-                            <div style="background:var(--bg-glass);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--text-secondary);line-height:1.7;">
-                                <b>💡 Hỗ trợ:</b><br>
-                                • TikTok: <code>https://www.tiktok.com/@username</code><br>
-                                • YouTube: <code>https://www.youtube.com/@channel</code><br>
-                                • <b style="color:var(--accent-primary);">Facebook Reels:</b> <code>https://www.facebook.com/profile.php?id=xxx</code> hoặc <code>/pagename/reels</code><br>
-                                <span style="color:var(--accent-warning);">⚠️ Facebook: Cần đăng nhập FB trên Chrome của server/VPS để quét được.</span>
+                                    placeholder="https://www.tiktok.com/@username hoặc Douyin/YouTube channel URL">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Số video tối đa</label>
                                 <input type="number" class="form-input" id="profile-limit" value="30" min="1" max="100">
                             </div>
-
-                            <!-- Facebook Cookies Upload -->
-                            <div class="form-group" id="fb-cookies-group" style="display:none;">
-                                <label class="form-label">🍪 Facebook Cookies (cho VPS)</label>
-                                <div style="font-size:10px;color:var(--text-tertiary);margin-bottom:8px;line-height:1.5;">
-                                    Cài extension <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" style="color:var(--accent-primary);">Get cookies.txt LOCALLY</a> →
-                                    Vào facebook.com → Export cookies → Upload file ở đây.
-                                </div>
-                                <input type="file" id="fb-cookies-file" accept=".txt" class="form-input" style="padding:8px;">
-                                <button class="btn btn-ghost btn-sm" onclick="uploadFBCookies()" style="margin-top:6px;width:100%;">📤 Upload Cookies</button>
-                                <div id="fb-cookies-status" style="font-size:11px;margin-top:4px;"></div>
-                            </div>
-
                             <button class="btn btn-primary btn-lg" onclick="scanProfile()" style="width:100%;"
                                 id="btn-scan-profile">
                                 🔍 Quét danh sách Video
@@ -806,14 +802,37 @@
 
                         <div class="form-group">
                             <label class="form-label">🛒 Link sản phẩm Affiliate</label>
-                            <input type="text" class="form-input" id="aff-product-link"
-                                placeholder="https://shope.ee/xxxxx hoặc link TikTok Shop, Lazada...">
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" class="form-input" id="aff-product-link"
+                                    placeholder="https://shopee.vn/product-name-i.123... hoặc link khác" style="flex: 1;">
+                                <button class="btn btn-primary" onclick="autoConvertShopeeLink()" id="btn-convert-shopee" style="white-space: nowrap; font-size: 12px; padding: 0 10px;">
+                                    ⚡ Tự động chuyển đổi
+                                </button>
+                            </div>
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">Từ khóa sản phẩm</label>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label class="form-label" style="margin-bottom: 0;">Từ khóa sản phẩm</label>
+                                <button class="btn btn-ghost btn-sm" onclick="searchShopeeProductsUI()" id="btn-search-shopee-ui" style="font-size: 11px; padding: 2px 8px; height: auto;">
+                                    🛍️ Tìm sản phẩm Shopee
+                                </button>
+                            </div>
                             <input type="text" class="form-input" id="aff-keywords"
                                 placeholder="kem chống nắng, serum vitamin C, máy lọc không khí...">
+                        </div>
+
+                        <!-- Shopee suggestions panel -->
+                        <div id="shopee-products-panel" class="card" style="margin-top: 0; margin-bottom: 15px; border-color: rgba(238, 77, 45, 0.2); background: rgba(238, 77, 45, 0.02); display: none;">
+                            <div class="card-header" style="padding: 8px 12px; border-bottom: 1px solid rgba(238, 77, 45, 0.1); display: flex; justify-content: space-between; align-items: center; background: none;">
+                                <div style="font-size: 12px; font-weight: 600; color: #ee4d2d; display: flex; align-items: center; gap: 6px;">
+                                    🛒 Sản phẩm Shopee gợi ý (Hoa hồng cao)
+                                </div>
+                                <span style="cursor: pointer; font-size: 14px; color: var(--text-tertiary);" onclick="document.getElementById('shopee-products-panel').style.display='none'">✕</span>
+                            </div>
+                            <div id="shopee-products-list" style="padding: 8px; max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+                                <!-- Product items injected by JS -->
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -1217,6 +1236,10 @@
                                     <div id="setting-fb" class="badge badge-pending">Chưa cấu hình</div>
                                 </div>
                                 <div class="form-group">
+                                    <label class="form-label">Shopee Affiliate App</label>
+                                    <div id="setting-shopee" class="badge badge-pending">Chưa cấu hình</div>
+                                </div>
+                                <div class="form-group">
                                     <label class="form-label">Tự động xóa Video</label>
                                     <div id="setting-cleanup" class="badge">--</div>
                                 </div>
@@ -1311,9 +1334,15 @@
                 <div class="modal-title" id="video-modal-title">Video Player</div>
                 <button class="modal-close" onclick="closeVideoModal()">✕</button>
             </div>
-            <div class="modal-body" style="padding:0;">
+            <div class="modal-body" style="padding:0; position:relative;">
                 <video id="video-modal-player" controls autoplay
                     style="width:100%;max-height:70vh;border-radius:0 0 12px 12px;background:#000;"></video>
+                <div id="image-modal-container" style="display:none; position:relative; width:100%; background:#000; border-radius:0 0 12px 12px; text-align:center;">
+                    <img id="image-modal-player" style="max-width:100%;max-height:70vh;object-fit:contain;">
+                    <button id="img-prev-btn" onclick="prevImage()" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.6);color:white;border:none;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;">❮</button>
+                    <button id="img-next-btn" onclick="nextImage()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.6);color:white;border:none;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;">❯</button>
+                    <div id="img-counter" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:white;padding:4px 10px;border-radius:12px;font-size:12px;"></div>
+                </div>
             </div>
         </div>
     </div>
