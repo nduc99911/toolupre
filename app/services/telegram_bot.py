@@ -130,15 +130,26 @@ async def handle_url(message: Message, state: FSMContext):
         "options": {"watermark_text": "ReupMaster"}
     }
     
-    keyboard = [
-        [InlineKeyboardButton(text="🎬 Tải Video", callback_data="dl_video")],
-        [InlineKeyboardButton(text="🖼️ Tải Bộ ảnh", callback_data="dl_images")],
-    ]
-    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await message.answer(
-        "📎 Đã nhận link!\n\nBạn muốn tải dạng nào?",
-        reply_markup=markup
-    )
+    if "douyin.com/user/" in url.lower():
+        keyboard = [
+            [InlineKeyboardButton(text="🕵️ Quét Profile Douyin (10 videos)", callback_data="scan_douyin_10")],
+            [InlineKeyboardButton(text="🕵️ Quét Profile Douyin (20 videos)", callback_data="scan_douyin_20")]
+        ]
+        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        await message.answer(
+            "📎 Phát hiện link Douyin Profile!\n\nBạn muốn quét bao nhiêu video gần nhất?",
+            reply_markup=markup
+        )
+    else:
+        keyboard = [
+            [InlineKeyboardButton(text="🎬 Tải Video", callback_data="dl_video")],
+            [InlineKeyboardButton(text="🖼️ Tải Bộ ảnh", callback_data="dl_images")],
+        ]
+        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        await message.answer(
+            "📎 Đã nhận link!\n\nBạn muốn tải dạng nào?",
+            reply_markup=markup
+        )
 
 
 @dp.callback_query(F.data == "dl_video")
@@ -208,6 +219,61 @@ async def handle_dl_images(callback: CallbackQuery, state: FSMContext):
         await send_process_options(callback.message, user_id)
     except Exception as e:
         logger.error(f"Telegram dl_images error: {e}")
+        await callback.message.edit_text(f"❌ Lỗi: {str(e)}")
+
+
+@dp.callback_query(F.data.startswith("scan_douyin_"))
+async def handle_scan_douyin(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if user_id not in user_sessions or "url" not in user_sessions[user_id]:
+        await callback.message.edit_text("❌ Session đã hết hạn.")
+        return
+    
+    url = user_sessions[user_id]["url"]
+    count = int(callback.data.split("_")[2])
+    
+    await callback.message.edit_text(f"⏳ Đang khởi động trình duyệt quét Profile Douyin ({count} videos). Việc này có thể mất 15-30 giây...")
+    
+    try:
+        from app.services.douyin_scraper import fetch_douyin_profile_videos
+        result = await fetch_douyin_profile_videos(url, max_count=count)
+        
+        videos = result.get("videos", [])
+        if not videos:
+            await callback.message.edit_text("❌ Không tìm thấy video nào trên Profile này.")
+            return
+            
+        user_info = result.get("userInfo", {})
+        
+        # Save videos to db as 'downloaded' or create process queue
+        # For simplicity, we just notify and process one by one or batch add to queue
+        # In a real batch workflow, we'd add all to process_queue.
+        # But we need to download them first. The scraper only gets the raw video URLs.
+        # So let's insert them into the DB and let the user know.
+        
+        text = f"✅ Đã quét xong Profile: **{user_info.get('nickname')}**\n"
+        text += f"Tìm thấy {len(videos)} videos.\n\n"
+        text += "Do số lượng nhiều, hệ thống sẽ tự động tải và xếp vào Thư viện. Bạn có thể vào Web để theo dõi và xử lý hàng loạt nhé!"
+        
+        await callback.message.edit_text(text, parse_mode="Markdown")
+        
+        import uuid
+        for v in videos:
+            vid_id = str(uuid.uuid4())[:8]
+            # Create video record, then we should dispatch a download task
+            await db.create_video({
+                "id": vid_id,
+                "source_url": v.get("videoUrl"),
+                "source_platform": "douyin",
+                "status": "pending",
+                "title": v.get("desc", ""),
+            })
+            # Start background download
+            from app.services.downloader import download_video
+            asyncio.create_task(download_video(v.get("videoUrl"), video_id=vid_id))
+            
+    except Exception as e:
+        logger.error(f"Telegram scan_douyin error: {e}")
         await callback.message.edit_text(f"❌ Lỗi: {str(e)}")
 
 

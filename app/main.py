@@ -68,6 +68,10 @@ app = FastAPI(
     version="2.0.0",
 )
 
+from app.routers.douyin_router import router as profile_router, douyin_api_router
+app.include_router(profile_router)
+app.include_router(douyin_api_router)
+
 # ─── Static Files & Templates ───
 static_dir = os.path.join(BASE_DIR, "static")
 templates_dir = os.path.join(BASE_DIR, "templates")
@@ -228,6 +232,14 @@ async def api_download(request: Request):
 async def _download_task(url: str, video_id: str):
     """Background download task."""
     try:
+        from app.services.downloader import detect_platform
+        platform = detect_platform(url)
+        if platform == "douyin":
+            from app.services.douyin_service import download_douyin_video_task
+            await download_douyin_video_task(url, video_id)
+            logger.info(f"Douyin download completed for {video_id}")
+            return
+
         result = await download_video(url, video_id)
         if "error" in result:
             logger.error(f"Download failed for {video_id}: {result['error']}")

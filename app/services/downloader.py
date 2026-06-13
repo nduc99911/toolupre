@@ -484,6 +484,55 @@ async def download_video(url: str, video_id: str = None,
         else:
             logger.warning(f"[{video_id}] TikWM fallback failed for TikTok Shop, trying yt-dlp... Error: {tikwm_result.get('error', '')}")
 
+    # ----------------------------------------------------
+    # CUSTOM DOWNLOAD FOR DOUYIN
+    # ----------------------------------------------------
+    if platform == "douyin":
+        logger.info(f"[{video_id}] Using Douyin Scraper for {url}")
+        try:
+            from app.services.douyin_scraper import fetch_douyin_video_info, download_douyin_video_file
+            d_info = await fetch_douyin_video_info(url)
+            
+            vid_url = d_info.get("videoUrl")
+            title = d_info.get("desc", "")
+            
+            await db.update_video(video_id, {
+                "status": "downloading",
+                "title": title,
+                "description": title,
+            })
+            
+            # Download file
+            output_file = os.path.join(output_dir, f"{video_id}_douyin.mp4")
+            success = await download_douyin_video_file(vid_url, output_file)
+            
+            if success and os.path.exists(output_file):
+                file_size = os.path.getsize(output_file)
+                probe_info = await probe_video(output_file)
+                result = {
+                    "id": video_id,
+                    "source_url": url,
+                    "source_platform": "douyin",
+                    "title": title,
+                    "description": title,
+                    "original_path": output_file,
+                    "original_filename": os.path.basename(output_file),
+                    "thumbnail_path": d_info.get("cover", ""),
+                    "file_size": file_size,
+                    "duration": probe_info.get("duration", 0),
+                    "width": probe_info.get("width", 0),
+                    "height": probe_info.get("height", 0),
+                    "status": "downloaded",
+                }
+                await db.update_video(video_id, result)
+                logger.info(f"Douyin download completed: {video_id} -> {output_file}")
+                return result
+            else:
+                return {"error": "Lỗi lưu file Douyin", "id": video_id}
+        except Exception as e:
+            logger.error(f"[{video_id}] Douyin Scraper failed: {e}")
+            return {"error": str(e), "id": video_id}
+
     # Step 1: Get video info first (title, description, slideshow detection)
     title = ""
     description = ""
