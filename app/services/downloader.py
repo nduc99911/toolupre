@@ -257,6 +257,68 @@ async def _download_tikwm(url: str, video_id: str) -> dict:
         logger.error(f"[{video_id}] TikWM Error: {e}")
         return {"error": str(e)}
 
+async def _download_douyin(url: str, video_id: str, direct_url: str = None) -> dict:
+    import httpx
+    from app.services.douyin_service import douyin_service
+    output_dir = settings.DOWNLOAD_DIR
+    try:
+        video_url = direct_url
+        data = {}
+        if not video_url:
+            info = await douyin_service.get_video_info(url)
+            if "error" in info:
+                return info
+                
+            data = info.get("data", {})
+            video_url = data.get("videoUrl")
+            if not video_url:
+                return {"error": "Douyin API did not return videoUrl"}
+            
+        output_file = os.path.join(output_dir, f"{video_id}_douyin.mp4")
+        
+        # Download the MP4 file
+        async with httpx.AsyncClient(timeout=120) as client:
+            # We can download directly using the proxy API from local server to bypass CORS/Referer issues
+            proxy_url = f"{douyin_service.api_url}/api/download?url={video_url}&filename={video_id}.mp4"
+            async with client.stream("GET", proxy_url) as stream_resp:
+                if stream_resp.status_code != 200:
+                    return {"error": f"Failed to download Douyin MP4, status {stream_resp.status_code}"}
+                    
+                total_size = int(stream_resp.headers.get("Content-Length", 0))
+                downloaded = 0
+                
+                with open(output_file, "wb") as f:
+                    async for chunk in stream_resp.aiter_bytes(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            video_progress[video_id] = round((downloaded / total_size) * 100, 1)
+
+        file_size = os.path.getsize(output_file)
+        probe_info = await probe_video(output_file)
+        
+        result = {
+            "id": video_id,
+            "source_url": url,
+            "source_platform": "douyin",
+            "title": data.get("desc", ""),
+            "description": data.get("desc", ""),
+            "original_path": output_file,
+            "original_filename": os.path.basename(output_file),
+            "thumbnail_path": data.get("cover", ""),
+            "file_size": file_size,
+            "duration": probe_info.get("duration", data.get("duration", 0)),
+            "width": probe_info.get("width", 1080),
+            "height": probe_info.get("height", 1920),
+            "status": "downloaded",
+        }
+        await db.update_video(video_id, result)
+        logger.info(f"[{video_id}] Download completed via local Douyin API: {output_file}")
+        return result
+    except Exception as e:
+        logger.error(f"[{video_id}] Douyin API Error: {e}")
+        return {"error": str(e)}
+
 
 async def _download_slideshow(url: str, video_id: str, info: dict) -> dict:
     """
@@ -484,54 +546,12 @@ async def download_video(url: str, video_id: str = None,
         else:
             logger.warning(f"[{video_id}] TikWM fallback failed for TikTok Shop, trying yt-dlp... Error: {tikwm_result.get('error', '')}")
 
-    # ----------------------------------------------------
-    # CUSTOM DOWNLOAD FOR DOUYIN
-    # ----------------------------------------------------
     if platform == "douyin":
-        logger.info(f"[{video_id}] Using Douyin Scraper for {url}")
-        try:
-            from app.services.douyin_scraper import fetch_douyin_video_info, download_douyin_video_file
-            d_info = await fetch_douyin_video_info(url)
-            
-            vid_url = d_info.get("videoUrl")
-            title = d_info.get("desc", "")
-            
-            await db.update_video(video_id, {
-                "status": "downloading",
-                "title": title,
-                "description": title,
-            })
-            
-            # Download file
-            output_file = os.path.join(output_dir, f"{video_id}_douyin.mp4")
-            success = await download_douyin_video_file(vid_url, output_file)
-            
-            if success and os.path.exists(output_file):
-                file_size = os.path.getsize(output_file)
-                probe_info = await probe_video(output_file)
-                result = {
-                    "id": video_id,
-                    "source_url": url,
-                    "source_platform": "douyin",
-                    "title": title,
-                    "description": title,
-                    "original_path": output_file,
-                    "original_filename": os.path.basename(output_file),
-                    "thumbnail_path": d_info.get("cover", ""),
-                    "file_size": file_size,
-                    "duration": probe_info.get("duration", 0),
-                    "width": probe_info.get("width", 0),
-                    "height": probe_info.get("height", 0),
-                    "status": "downloaded",
-                }
-                await db.update_video(video_id, result)
-                logger.info(f"Douyin download completed: {video_id} -> {output_file}")
-                return result
-            else:
-                return {"error": "Lỗi lưu file Douyin", "id": video_id}
-        except Exception as e:
-            logger.error(f"[{video_id}] Douyin Scraper failed: {e}")
-            return {"error": str(e), "id": video_id}
+        dy_result = await _download_douyin(url, video_id)
+        if dy_result and "error" not in dy_result:
+            return dy_result
+        else:
+            logger.warning(f"[{video_id}] Local Douyin API failed, trying yt-dlp... Error: {dy_result.get('error', '')}")
 
     # Step 1: Get video info first (title, description, slideshow detection)
     title = ""

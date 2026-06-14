@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.config import settings
 from app import database as db
-from app.services.progress import video_progress
+from app.services.progress import video_progress, video_logs, active_processes
 
 logger = logging.getLogger("reupmaster.processor")
 
@@ -67,12 +67,21 @@ def _run_ffmpeg_sync_with_progress(cmd: list[str], video_id: str, duration: floa
             encoding='utf-8',
             errors='replace'
         )
+        
+        active_processes[video_id] = process
 
         all_output = []
+        if video_id not in video_logs:
+            video_logs[video_id] = []
+            
         # Read stderr line by line (FFmpeg outputs progress here)
         for line in process.stderr:
             all_output.append(line)
             line_str = line.strip()
+            
+            video_logs[video_id].append(line_str)
+            if len(video_logs[video_id]) > 100:
+                video_logs[video_id].pop(0)
 
             if "time=" in line_str and duration > 0:
                 time_match = re.search(r'time=(\d+):(\d+):(\d+\.?\d*)', line_str)
@@ -83,12 +92,18 @@ def _run_ffmpeg_sync_with_progress(cmd: list[str], video_id: str, duration: floa
                     video_progress[video_id] = round(pct, 1)
 
         process.wait(timeout=timeout)
+        if video_id in active_processes:
+            del active_processes[video_id]
         return process.returncode, "".join(all_output)
     except subprocess.TimeoutExpired:
+        if video_id in active_processes:
+            del active_processes[video_id]
         if process:
             process.kill()
         return -1, "".join(all_output) + "\ntimeout"
     except Exception as e:
+        if video_id in active_processes:
+            del active_processes[video_id]
         return -1, str(e)
 
 
@@ -306,6 +321,79 @@ class VideoProcessor:
             "description": "Ghi đè metadata giả ngẫu nhiên (device, date, GPS...)",
             "default": True
         },
+
+        # ─── New Advanced Anti-Copyright (1-8) ───
+        "temporal_blend": {
+            "name": "🌪️ Temporal Blending",
+            "description": "Trộn pixel giữa các frame, tạo motion blur nhẹ phá hash",
+            "default": False,
+            "mode": "average"
+        },
+        "frame_interpolation": {
+            "name": "🎞️ Frame Interpolation",
+            "description": "Nội suy frame mới 100% (rất nặng CPU)",
+            "default": False,
+            "fps": 60
+        },
+        "audio_breaker": {
+            "name": "🔊 Phá Audio Fingerprint",
+            "description": "Combo EQ + Reverb + Resample phá dấu vân tay âm thanh",
+            "default": False
+        },
+        "dct_manipulation": {
+            "name": "🧬 Cấu trúc nén DCT",
+            "description": "Can thiệp tầng nén sâu (GOP, B-frames, Quantization)",
+            "default": False
+        },
+        "image_watermark": {
+            "name": "🖼️ Chèn Logo PNG (Watermark)",
+            "description": "Chèn logo của bạn (nếu có) vào video để xây kênh",
+            "default": False
+        },
+        "auto_intro_outro": {
+            "name": "🧬 Cấu trúc nén DCT",
+            "description": "Can thiệp tầng nén sâu (GOP, B-frames, Quantization)",
+            "default": False
+        },
+        "dynamic_watermark": {
+            "name": "🌊 Watermark di chuyển",
+            "description": "Watermark chạy ngẫu nhiên khắp màn hình",
+            "default": False,
+            "text": "@ReupMaster"
+        },
+        "auto_intro_outro": {
+            "name": "🎬 Auto Intro/Outro",
+            "description": "Tự động thêm 1s video/ảnh mờ ở đầu và cuối",
+            "default": False
+        },
+        "scene_reshuffle": {
+            "name": "✂️ Đảo cảnh ngẫu nhiên",
+            "description": "(BETA) Cắt video thành nhiều đoạn và đảo nhẹ thứ tự",
+            "default": False
+        },
+        "ai_frame_variation": {
+            "name": "🤖 AI Style Variation",
+            "description": "(Mô phỏng AI) Thêm hiệu ứng nghệ thuật nhẹ để thay đổi hoàn toàn frame",
+            "default": False
+        },
+
+        # ─── Vietsub & Lồng Tiếng ───
+        "vietsub_dubbing": {
+            "name": "🎙️ Vietsub + Lồng Tiếng",
+            "description": "Tự động nhận diện giọng nói → Dịch → Phụ đề + Lồng tiếng Việt (AI)",
+            "default": False,
+            "voice_id": "vi-female",
+            "voice_rate": "+0%",
+            "sub_style": "default",
+            "original_volume": 0.0,
+        },
+        "vietsub_only": {
+            "name": "📝 Vietsub (Chỉ Phụ Đề)",
+            "description": "Chỉ thêm phụ đề Việt, giữ nguyên âm thanh gốc (không lồng tiếng)",
+            "default": False,
+            "sub_style": "default",
+        },
+
     }
 
     @staticmethod
@@ -435,6 +523,57 @@ class VideoProcessor:
             # Use hue shift (very fast) + slight saturation tweak
             video_filters.append(f"hue=h={shift_val}:s=1")
 
+        
+        # ─── Advanced Anti-Copyright Filters (1-8) ───
+        
+        # 1. Temporal Blending
+        if options.get("temporal_blend", False):
+            # Fallback to 'average' if 'average128' was selected from the old options default
+            mode = options.get("temporal_blend_mode", "average").replace("128", "")
+            if mode == "average": mode = "average"
+            video_filters.append(f"tblend=all_mode={mode}")
+            
+        # 2. Dynamic Watermark
+        if options.get("dynamic_watermark", False):
+            text = options.get("dynamic_watermark_text", "@ReupMaster")
+            text_escaped = text.replace("'", "\'").replace(":", "\\:")
+            # Use sin/cos for smooth movement or random jumps
+            video_filters.append(
+                f"drawtext=text='{text_escaped}':fontsize=24:fontcolor=white@0.15:"
+                f"x='if(eq(mod(n\,300)\,0)\,random(1)*(W-tw)\,x)':"
+                f"y='if(eq(mod(n\,300)\,0)\,random(1)*(H-th)\,y)'"
+            )
+            
+        # 3. Audio Fingerprint Breaker
+        if options.get("audio_breaker", False) and not options.get("remove_audio", False):
+            audio_filters.append("aresample=48000")
+            audio_filters.append("equalizer=f=100:t=q:w=1:g=2")
+            audio_filters.append("equalizer=f=8000:t=q:w=1:g=-1")
+            audio_filters.append("aecho=0.8:0.9:40:0.3")
+            audio_filters.append("extrastereo=m=1.2")
+            
+        # 6. Auto Intro/Outro (Add 1s black padding)
+        if options.get("auto_intro_outro", False):
+            video_filters.append("tpad=start_duration=1:stop_duration=1:color=black")
+            if not options.get("remove_audio", False):
+                audio_filters.append("adelay=1s:all=1")
+                audio_filters.append("apad=pad_dur=1")
+                
+        # 7. Scene Reshuffle (Randomize frame order slightly)
+        if options.get("scene_reshuffle", False):
+            video_filters.append("random=frames=3")
+            
+        # 8. AI Style Variation (Simulated with complex light filters)
+        if options.get("ai_frame_variation", False):
+            # Use unsharp mask and selective blur to create an "AI upscaled" painterly look
+            video_filters.append("unsharp=5:5:1.0:5:5:0.0")
+            video_filters.append("smartblur=1.5:-0.35:-3.5:0.5:0.25:2.0")
+            
+        # 3. Frame Interpolation (add last because it changes frame rate)
+        if options.get("frame_interpolation", False):
+            target_fps = int(options.get("frame_interpolation_fps", 60))
+            video_filters.append(f"minterpolate=fps={target_fps}:mi_mode=blend")
+
         return video_filters, audio_filters
 
     @staticmethod
@@ -467,6 +606,117 @@ class VideoProcessor:
         logger.info(f"Processing video {video_id}: {input_path}")
 
         try:
+            # ─── Vietsub + Lồng Tiếng Pipeline ───
+            # This runs BEFORE normal processing so the output becomes the new input
+            if options.get("vietsub_dubbing", False):
+                logger.info(f"Vietsub pipeline triggered for {video_id}")
+                from app.services.vietsub_service import full_vietsub_pipeline
+                from app.services.progress import video_progress, video_logs
+                
+                video_logs[video_id] = []
+                video_progress[video_id] = 0.0
+
+                def _vs_progress(step, msg):
+                    video_logs[video_id].append(msg)
+                    # Fake progress logic based on steps
+                    if step == "extract": video_progress[video_id] = 10.0
+                    elif step == "transcribe": video_progress[video_id] = 30.0
+                    elif step == "translate": video_progress[video_id] = 50.0
+                    elif step == "subtitle": video_progress[video_id] = 60.0
+                    elif step == "voiceover": video_progress[video_id] = 80.0
+                    elif step == "render": video_progress[video_id] = 95.0
+
+                vietsub_result = await full_vietsub_pipeline(
+                    video_path=input_path,
+                    voice_id=options.get("vietsub_dubbing_voice_id", "vi-female"),
+                    voice_rate=options.get("vietsub_dubbing_voice_rate", "+0%"),
+                    sub_style=options.get("vietsub_dubbing_sub_style", "default"),
+                    original_volume=float(options.get("vietsub_dubbing_original_volume", 0.15)),
+                    include_voiceover=True,
+                    include_subtitles=True,
+                    output_path=output_path,
+                    progress_callback=_vs_progress
+                )
+
+                if "error" not in vietsub_result and os.path.exists(output_path):
+                    has_other_options = False
+                    for key, info in VideoProcessor.AVAILABLE_OPTIONS.items():
+                        if key in ["vietsub_dubbing", "vietsub_only"]:
+                            continue
+                        if options.get(key, info.get("default", False)):
+                            has_other_options = True
+                            break
+
+                    if has_other_options:
+                        input_path = output_path
+                        output_filename = f"processed_{video_id}_{uuid.uuid4().hex[:6]}.mp4"
+                        output_path = os.path.join(settings.PROCESSED_DIR, output_filename)
+                        logger.info(f"Vietsub complete. Continuing with other anti-copyright options. New input: {input_path}")
+                    else:
+                        video_progress[video_id] = 100.0
+                        await db.update_video(video_id, {
+                            "status": "processed",
+                            "processed_path": output_path,
+                        })
+                        return {"output_path": output_path, "vietsub": True}
+                elif "error" in vietsub_result:
+                    video_logs[video_id].append(f"❌ Vietsub error: {vietsub_result['error']}")
+                    logger.error(f"Vietsub failed: {vietsub_result['error']}, falling back to normal processing")
+                    # Fall through to normal processing
+
+            # ─── Vietsub Only (Chỉ Phụ Đề, không lồng tiếng) ───
+            if options.get("vietsub_only", False):
+                logger.info(f"Vietsub-only (sub only) pipeline triggered for {video_id}")
+                from app.services.vietsub_service import full_vietsub_pipeline
+                from app.services.progress import video_progress, video_logs
+
+                if video_id not in video_logs:
+                    video_logs[video_id] = []
+                video_progress[video_id] = 0.0
+
+                def _vs_sub_progress(step, msg):
+                    video_logs[video_id].append(msg)
+                    if step == "extract": video_progress[video_id] = 10.0
+                    elif step == "transcribe": video_progress[video_id] = 35.0
+                    elif step == "translate": video_progress[video_id] = 60.0
+                    elif step == "subtitle": video_progress[video_id] = 75.0
+                    elif step == "render": video_progress[video_id] = 95.0
+
+                vietsub_result = await full_vietsub_pipeline(
+                    video_path=input_path,
+                    sub_style=options.get("vietsub_only_sub_style", "default"),
+                    include_voiceover=False,
+                    include_subtitles=True,
+                    original_volume=1.0,  # Keep original audio at full volume
+                    output_path=output_path,
+                    progress_callback=_vs_sub_progress,
+                )
+
+                if "error" not in vietsub_result and os.path.exists(output_path):
+                    has_other_options = False
+                    for key, info in VideoProcessor.AVAILABLE_OPTIONS.items():
+                        if key in ["vietsub_dubbing", "vietsub_only"]:
+                            continue
+                        if options.get(key, info.get("default", False)):
+                            has_other_options = True
+                            break
+
+                    if has_other_options:
+                        input_path = output_path
+                        output_filename = f"processed_{video_id}_{uuid.uuid4().hex[:6]}.mp4"
+                        output_path = os.path.join(settings.PROCESSED_DIR, output_filename)
+                        logger.info(f"Vietsub-only complete. Continuing with other anti-copyright options. New input: {input_path}")
+                    else:
+                        video_progress[video_id] = 100.0
+                        await db.update_video(video_id, {
+                            "status": "processed",
+                            "processed_path": output_path,
+                        })
+                        return {"output_path": output_path, "vietsub": True}
+                elif "error" in vietsub_result:
+                    video_logs[video_id].append(f"❌ Vietsub error: {vietsub_result['error']}")
+                    logger.error(f"Vietsub-only failed: {vietsub_result['error']}, falling back to normal processing")
+
             # Build FFmpeg command
             width = video.get("width", 0) or 0
             height = video.get("height", 0) or 0
@@ -485,16 +735,44 @@ class VideoProcessor:
             vf_str = ",".join(video_filters) if video_filters else None
             af_str = ",".join(audio_filters) if audio_filters else None
 
-            if vf_str:
-                cmd.extend(["-vf", vf_str])
-
-            if options.get("remove_audio", False):
-                cmd.extend(["-an"])  # No audio
-            elif af_str:
-                cmd.extend(["-af", af_str])
+            has_watermark = options.get("image_watermark", False)
+            storage_dir = os.path.dirname(settings.DOWNLOAD_DIR)
+            logo_path = os.path.join(storage_dir, "logo.png")
+            
+            filter_complex_parts = []
+            map_args = []
+            
+            if has_watermark and os.path.exists(logo_path):
+                cmd.extend(["-i", logo_path])
+                if vf_str:
+                    filter_complex_parts.append(f"[0:v]{vf_str}[base];[base][1:v]overlay=main_w-overlay_w-20:20[v]")
+                else:
+                    filter_complex_parts.append(f"[0:v][1:v]overlay=main_w-overlay_w-20:20[v]")
+                map_args.extend(["-map", "[v]"])
+                
+                if not options.get("remove_audio", False):
+                    if af_str:
+                        filter_complex_parts.append(f"[0:a]{af_str}[a]")
+                        map_args.extend(["-map", "[a]"])
+                    else:
+                        map_args.extend(["-map", "0:a?"])
+            else:
+                if vf_str:
+                    cmd.extend(["-vf", vf_str])
+                if options.get("remove_audio", False):
+                    cmd.extend(["-an"])
+                elif af_str:
+                    cmd.extend(["-af", af_str])
+                    
+            if filter_complex_parts:
+                cmd.extend(["-filter_complex", ";".join(filter_complex_parts)])
+                cmd.extend(map_args)
 
             # Codec settings
-            if options.get("reencode", True):
+            # Force re-encode if any filters are applied
+            force_reencode = bool(vf_str or af_str or options.get("change_fps", False) or (has_watermark and os.path.exists(logo_path)))
+            
+            if force_reencode or options.get("reencode", True):
                 codec = options.get("codec", "libx264")
                 crf = int(options.get("crf", 23))
                 cmd.extend([
@@ -507,6 +785,19 @@ class VideoProcessor:
                 ])
                 if not options.get("remove_audio", False):
                     cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+
+                # 4. DCT Manipulation (Only valid when re-encoding)
+                if options.get("dct_manipulation", False):
+                    cmd.extend([
+                        "-dct", "faan",
+                        "-qmin", "10",
+                        "-qmax", "30",
+                        "-qdiff", "6",
+                        "-g", "30",
+                        "-keyint_min", "15",
+                        "-bf", "3",
+                        "-b_strategy", "2"
+                    ])
             else:
                 cmd.extend(["-c", "copy"])
 

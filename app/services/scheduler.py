@@ -50,6 +50,14 @@ class PostScheduler:
                 name="Reset daily seeding limits",
                 replace_existing=True,
             )
+            # Check for Auto Campaigns every hour
+            self.scheduler.add_job(
+                self._run_auto_campaigns,
+                trigger=IntervalTrigger(minutes=60),
+                id="run_auto_campaigns",
+                name="Scan and execute auto campaigns",
+                replace_existing=True,
+            )
             self.scheduler.start()
             self._running = True
             logger.info("Post scheduler started (with seeding)")
@@ -113,21 +121,38 @@ class PostScheduler:
                         if os.path.splitext(f)[1].lower() in valid_exts:
                             images.append(os.path.join(video_path, f))
                             
-                result = await FacebookAPI.post_images(
-                    page_id=post["fb_page_id"],
-                    access_token=post["access_token"],
-                    image_paths=images,
-                    caption=caption,
-                )
+                if post["fb_page_id"].startswith("tele:"):
+                    chat_id = post["fb_page_id"].replace("tele:", "")
+                    from app.services.telegram_bot import bot
+                    from aiogram.types import FSInputFile
+                    if not bot: raise Exception("Telegram bot token not configured")
+                    for img in images:
+                        await bot.send_photo(chat_id, FSInputFile(img), caption=caption)
+                    result = {"success": True, "post_id": f"tele_{post_id}"}
+                else:
+                    result = await FacebookAPI.post_images(
+                        page_id=post["fb_page_id"],
+                        access_token=post["access_token"],
+                        image_paths=images,
+                        caption=caption,
+                    )
             else:
-                # Publish to Facebook
-                result = await FacebookAPI.post_video(
-                    page_id=post["fb_page_id"],
-                    access_token=post["access_token"],
-                    video_path=video_path,
-                    caption=caption,
-                    title=post.get("video_title", ""),
-                )
+                if post["fb_page_id"].startswith("tele:"):
+                    chat_id = post["fb_page_id"].replace("tele:", "")
+                    from app.services.telegram_bot import bot
+                    from aiogram.types import FSInputFile
+                    if not bot: raise Exception("Telegram bot token not configured")
+                    await bot.send_video(chat_id, FSInputFile(video_path), caption=caption)
+                    result = {"success": True, "post_id": f"tele_{post_id}"}
+                else:
+                    # Publish to Facebook
+                    result = await FacebookAPI.post_video(
+                        page_id=post["fb_page_id"],
+                        access_token=post["access_token"],
+                        video_path=video_path,
+                        caption=caption,
+                        title=post.get("video_title", ""),
+                    )
 
             if result.get("success"):
                 await db.update_scheduled_post(post_id, {
@@ -201,6 +226,99 @@ class PostScheduler:
             logger.info("Daily seeding limits reset")
         except Exception as e:
             logger.error(f"Error resetting daily limits: {e}")
+
+    async def _run_auto_campaigns(self):
+        """Scan target URLs for new videos, download, process, and schedule."""
+        from datetime import datetime, timedelta
+        import uuid
+        import json
+        from app.services.douyin_api import DouyinAPI
+        import asyncio
+        
+        try:
+            campaigns = await db.get_active_campaigns()
+            current_hour = datetime.now().hour
+            
+            for camp in campaigns:
+                if int(camp.get('scan_hour', 0)) != current_hour:
+                    continue
+                    
+                logger.info(f"Running auto campaign: {camp['name']}")
+                
+                try:
+                    videos = await DouyinAPI.get_profile_videos(camp['target_url'], limit=5)
+                except Exception as e:
+                    logger.error(f"Failed to fetch douyin profile for campaign {camp['name']}: {e}")
+                    continue
+                
+                if not videos:
+                    continue
+                    
+                adb = await db.get_db()
+                for v in videos:
+                    cursor = await adb.execute("SELECT id FROM videos WHERE source_url = ?", (v['url'],))
+                    existing = await cursor.fetchone()
+                    if existing:
+                        continue 
+                        
+                    logger.info(f"New video found for campaign {camp['name']}: {v['url']}")
+                    
+                    video_id = str(uuid.uuid4())[:8]
+                    await db.create_video({
+                        "id": video_id,
+                        "source_url": v['url'],
+                        "source_platform": "douyin",
+                        "title": v.get('desc', ''),
+                        "status": "pending",
+                        "processing_options": camp.get('processing_options', '{}')
+                    })
+                    
+                    asyncio.create_task(self._auto_campaign_pipeline(video_id, camp))
+                    
+                await adb.close()
+        except Exception as e:
+            logger.error(f"Error in auto campaigns: {e}")
+
+    async def _auto_campaign_pipeline(self, video_id: str, camp: dict):
+        from app.main import _download_task
+        from app.services.video_processor import VideoProcessor
+        from datetime import datetime, timedelta
+        import asyncio
+        import json
+        
+        try:
+            logger.info(f"Starting auto pipeline for video {video_id}")
+            video = await db.get_video(video_id)
+            if not video: return
+            
+            await _download_task(video['source_url'], video_id)
+            
+            video = await db.get_video(video_id)
+            if video.get('status') != 'downloaded':
+                return
+                
+            opts = json.loads(camp.get('processing_options', '{}'))
+            if opts:
+                processor = VideoProcessor(video_id, opts)
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, processor.process)
+                
+            video = await db.get_video(video_id)
+            if video.get('status') in ['processed', 'downloaded']:
+                now = datetime.now()
+                post_time = now.replace(hour=int(camp.get('post_hour', 12)), minute=0, second=0)
+                if post_time <= now:
+                    post_time += timedelta(days=1)
+                    
+                await self.add_scheduled_post(
+                    video_id=video_id,
+                    page_id=camp.get('page_id'),
+                    scheduled_time=post_time.strftime("%Y-%m-%dT%H:%M"),
+                    caption=video.get('title', '')
+                )
+                logger.info(f"Auto pipeline completed! Video {video_id} scheduled for {post_time}")
+        except Exception as e:
+            logger.error(f"Error in auto pipeline for {video_id}: {e}")
 
     async def add_scheduled_post(self, video_id: str, page_id: str,
                                   scheduled_time: str, caption: str = "",

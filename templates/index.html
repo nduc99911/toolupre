@@ -46,6 +46,10 @@
                         <span class="nav-icon">🔍</span>
                         <span>Quét Profile</span>
                     </div>
+                    <div class="nav-item" data-page="profile-douyin" id="nav-profile-douyin">
+                        <span class="nav-icon">🎵</span>
+                        <span>Quét Douyin</span>
+                    </div>
                     <div class="nav-item" data-page="library" id="nav-library">
                         <span class="nav-icon">🎬</span>
                         <span>Thư viện</span>
@@ -79,6 +83,10 @@
                     <div class="nav-item" data-page="affiliate" id="nav-affiliate">
                         <span class="nav-icon">🔗</span>
                         <span>Affiliate</span>
+                    </div>
+                    <div class="nav-item" data-page="campaigns" id="nav-campaigns">
+                        <span class="nav-icon">🤖</span>
+                        <span>Auto Campaigns</span>
                     </div>
                 </div>
 
@@ -309,6 +317,48 @@
                     </div>
                 </div>
 
+                <!-- ═══════════ DOUYIN PROFILE SCAN ═══════════ -->
+                <div class="page" id="page-profile-douyin">
+                    <div class="two-col">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>🎵 Quét Douyin</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label>Link Profile Douyin</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-input" id="douyin-profile-url" placeholder="https://www.douyin.com/user/...">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Số lượng video</label>
+                                    <input type="number" class="form-input" id="douyin-profile-limit" value="30" min="1" max="100">
+                                </div>
+                                <button class="btn btn-primary" id="btn-scan-douyin" onclick="scanDouyinProfile()" style="width: 100%">
+                                    <span class="icon">🔍</span> Quét Danh Sách
+                                </button>
+                                <div id="douyin-scan-status" style="margin-top: 12px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                                <h3>Kết quả: <span id="douyin-video-count">0</span> video</h3>
+                                <div style="display:flex; gap:10px;">
+                                    <button class="btn btn-secondary" onclick="selectAllDouyinVideos()">Chọn tất cả</button>
+                                    <button class="btn btn-primary" onclick="downloadSelectedDouyinVideos()">⬇️ Tải đã chọn</button>
+                                </div>
+                            </div>
+                            <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                                <div class="video-grid" id="douyin-video-grid">
+                                    <!-- Videos will appear here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ═══════════ PROFILE SCAN ═══════════ -->
                 <div class="page" id="page-profile-scan">
                     <div class="two-col">
@@ -504,6 +554,8 @@
                         <button class="tab-btn" onclick="filterVideos('failed', this)">Lỗi</button>
                     </div>
                     <div style="display:flex; gap:10px;">
+                        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('video-upload-input').click()">📤 Tải lên</button>
+                        <input type="file" id="video-upload-input" accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska" multiple style="display:none;" onchange="handleVideoUpload(event)">
                         <button class="btn btn-ghost btn-sm" onclick="showCreateFolderModal()">➕ Thư mục mới</button>
                         <button class="btn btn-ghost btn-sm" onclick="loadVideos()">🔄 Làm mới</button>
                     </div>
@@ -597,6 +649,19 @@
                     </div>
                     <div id="process-status" style="margin-top: 16px;"></div>
                     <div id="queue-status-container"></div>
+                    
+                    <div id="process-live-logs-container" style="display:none; margin-top:20px;">
+                        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px; display:flex; justify-content:space-between;">
+                            <span><span class="icon">💻</span> Quá trình thực thi FFmpeg:</span>
+                            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                                <input type="checkbox" id="process-log-auto-scroll" checked class="toggle" style="width:28px;height:16px;"> 
+                                Auto-scroll
+                            </label>
+                        </div>
+                        <div class="log-terminal" id="process-live-logs" style="height:250px;">
+                            <div class="log-content" id="process-live-logs-content"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1206,6 +1271,17 @@
                 </div>
             </div>
 
+            <!-- ═══════════ AUTO CAMPAIGNS ═══════════ -->
+            <div class="page" id="page-campaigns">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h2 style="margin:0; font-size:18px;">Quản lý Chiến dịch Tự động</h2>
+                    <button class="btn btn-primary" onclick="showCreateCampaignModal()">➕ Thêm Chiến dịch</button>
+                </div>
+                <div class="grid-3" id="campaigns-grid">
+                    <!-- Campaign cards will be injected here -->
+                </div>
+            </div>
+
             <!-- ═══════════ SETTINGS ═══════════ -->
             <div class="page" id="page-settings">
                 <div class="card">
@@ -1242,6 +1318,7 @@
                                 <div class="form-group">
                                     <label class="form-label">Tự động xóa Video</label>
                                     <div id="setting-cleanup" class="badge">--</div>
+                                    <button class="btn btn-outline btn-sm" style="margin-top:8px; width:100%;" onclick="runSystemCleanup()">🧹 Dọn rác ngay (Giải phóng ổ cứng)</button>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">FFmpeg Path</label>
@@ -1261,6 +1338,12 @@
                                     <div id="setting-processed-dir"
                                         style="font-size:12px;color:var(--text-tertiary);word-break:break-all;">--
                                     </div>
+                                </div>
+                                <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                                    <label class="form-label">Logo Xây Kênh (PNG Watermark)</label>
+                                    <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">Logo sẽ được chèn vào góc video khi chọn mục "Chèn Logo PNG". Hỗ trợ file .png trong suốt.</div>
+                                    <button class="btn btn-outline btn-sm" onclick="document.getElementById('logo-upload-input').click()">🖼️ Tải Logo lên</button>
+                                    <input type="file" id="logo-upload-input" accept="image/png" style="display:none;" onchange="handleLogoUpload(event)">
                                 </div>
                             </div>
                         </div>
@@ -1358,7 +1441,197 @@
     </div>
 
     <!-- Scripts -->
-    <script src="/static/js/app.js?v=2.6"></script>
+    <script src="/static/js/app.js?v=3.1"></script>
+    <!-- ═══ CAMPAIGN MODAL ═══ -->
+    <div class="modal-overlay" id="modal-campaign">
+        <div class="modal" style="max-width:600px;">
+            <div class="modal-header">
+                <h3>🤖 Chiến Dịch Mới</h3>
+                <button class="btn-close" onclick="closeModal('modal-campaign')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Tên chiến dịch</label>
+                    <input type="text" class="form-input" id="camp-name" placeholder="Ví dụ: Kênh Gái Xinh">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Link Profile Douyin (Mục tiêu)</label>
+                    <input type="text" class="form-input" id="camp-target" placeholder="https://v.douyin.com/...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Đăng lên Fanpage (ID)</label>
+                    <input type="text" class="form-input" id="camp-page" placeholder="Nhập Page ID (Xem ở tab Facebook Pages)">
+                </div>
+                <div style="display:flex; gap:15px; margin-bottom: 15px;">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Giờ quét video mới</label>
+                        <input type="number" class="form-input" id="camp-scan" min="0" max="23" value="0">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Giờ đăng (hôm sau)</label>
+                        <input type="number" class="form-input" id="camp-post" min="0" max="23" value="12">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Cấu hình tự động xử lý (Lách bản quyền)</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                            <input type="checkbox" class="camp-opt" value="mirror" checked> Lật gương (Mirror)
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                            <input type="checkbox" class="camp-opt" value="speed" checked> Đổi tốc độ (1.03x)
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                            <input type="checkbox" class="camp-opt" value="brightness" checked> Chỉnh độ sáng
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                            <input type="checkbox" class="camp-opt" value="temporal_blend"> Temporal Blend
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                            <input type="checkbox" class="camp-opt" value="dynamic_watermark"> Text Watermark
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                            <input type="checkbox" class="camp-opt" value="image_watermark"> Logo PNG
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                            <input type="checkbox" class="camp-opt" value="audio_breaker"> Audio Breaker
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
+                            <input type="checkbox" class="camp-opt" value="remove_audio"> Xóa âm thanh gốc
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modal-campaign')">Hủy</button>
+                <button class="btn btn-primary" onclick="saveCampaign()">💾 Lưu chiến dịch</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Injecting Campaign Logic directly into HTML to bypass any app.js cache issues
+        function showCreateCampaignModal() {
+            try {
+                document.getElementById('camp-name').value = '';
+                document.getElementById('camp-target').value = '';
+                document.getElementById('camp-page').value = '';
+                document.getElementById('modal-campaign').classList.add('active');
+            } catch(e) {
+                alert("Lỗi mở modal: " + e.message);
+            }
+        }
+        
+        async function saveCampaign() {
+            const name = document.getElementById('camp-name').value.trim();
+            const targetUrl = document.getElementById('camp-target').value.trim();
+            const pageId = document.getElementById('camp-page').value.trim();
+            const scanHour = parseInt(document.getElementById('camp-scan').value);
+            const postHour = parseInt(document.getElementById('camp-post').value);
+            
+            if (!name || !targetUrl) {
+                if(typeof showToast === 'function') showToast('Vui lòng nhập Tên và Link mục tiêu', 'warning');
+                else alert('Vui lòng nhập Tên và Link mục tiêu');
+                return;
+            }
+            
+            const opts = {};
+            document.querySelectorAll('.camp-opt').forEach(chk => {
+                opts[chk.value] = chk.checked;
+            });
+            
+            const payload = {
+                name: name,
+                target_url: targetUrl,
+                page_id: pageId,
+                scan_hour: scanHour,
+                post_hour: postHour,
+                processing_options: opts
+            };
+            
+            try {
+                const response = await fetch('/api/campaigns', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.ok) {
+                    if(typeof showToast === 'function') showToast('Đã lưu chiến dịch!', 'success');
+                    if(typeof closeModal === 'function') closeModal('modal-campaign');
+                    else document.getElementById('modal-campaign').classList.remove('active');
+                    loadCampaigns();
+                } else {
+                    alert('Lỗi khi lưu chiến dịch');
+                }
+            } catch (err) {
+                alert('Lỗi mạng: ' + err.message);
+            }
+        }
+        
+        async function loadCampaigns() {
+            try {
+                const response = await fetch('/api/campaigns');
+                const data = await response.json();
+                
+                const grid = document.getElementById('campaigns-grid');
+                if (!grid) return;
+                
+                grid.innerHTML = '';
+                if (data.campaigns.length === 0) {
+                    grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;">Chưa có chiến dịch nào. Hãy tạo chiến dịch mới.</div>';
+                    return;
+                }
+                
+                data.campaigns.forEach(camp => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.style.position = 'relative';
+                    if (!camp.is_active) {
+                        card.style.opacity = '0.6';
+                    }
+                    
+                    card.innerHTML = `
+                        <div class="card-body">
+                            <h3 style="margin-top:0;">${camp.name}</h3>
+                            <p style="font-size:12px; word-break:break-all;">🎯 ${camp.target_url}</p>
+                            <p style="font-size:12px;">📘 Đăng lên: ${camp.page_id || 'Chưa chọn'}</p>
+                            <div style="display:flex; gap:10px; margin-top:10px;">
+                                <span class="badge">Quét: ${camp.scan_hour}h</span>
+                                <span class="badge">Đăng: ${camp.post_hour}h</span>
+                            </div>
+                        </div>
+                        <div class="card-footer" style="display:flex; justify-content:space-between;">
+                            <button class="btn btn-sm ${camp.is_active ? 'btn-secondary' : 'btn-primary'}" onclick="toggleCampaign('${camp.id}')">
+                                ${camp.is_active ? '⏸️ Tạm dừng' : '▶️ Tiếp tục'}
+                            </button>
+                            <button class="btn btn-sm btn-ghost" style="color:red" onclick="deleteCampaign('${camp.id}')">🗑️ Xóa</button>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+        
+        async function toggleCampaign(id) {
+            await fetch('/api/campaigns/' + id + '/toggle', {method: 'POST'});
+            loadCampaigns();
+        }
+        
+        async function deleteCampaign(id) {
+            if (!confirm('Xóa chiến dịch này?')) return;
+            await fetch('/api/campaigns/' + id, {method: 'DELETE'});
+            loadCampaigns();
+        }
+
+        // Attach event listener directly to nav tab
+        document.addEventListener('DOMContentLoaded', () => {
+            const navCamp = document.getElementById('nav-campaigns');
+            if(navCamp) navCamp.addEventListener('click', loadCampaigns);
+        });
+    </script>
 </body>
 
 </html>

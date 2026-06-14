@@ -426,6 +426,27 @@ function startPolling(videoId) {
                 progressEl.style.width = `${p}%`;
                 if (textEl) textEl.textContent = `${p.toFixed(1)}%`;
             }
+            
+            // Render logs if available
+            if (status.logs && status.logs.length > 0) {
+                const logsContainer = document.getElementById('process-live-logs-container');
+                const logsContent = document.getElementById('process-live-logs-content');
+                if (logsContainer && logsContent) {
+                    logsContainer.style.display = 'block';
+                    logsContent.innerHTML = status.logs.map(l => escapeHtml(l)).join('<br>');
+                    
+                    const autoScroll = document.getElementById('process-log-auto-scroll');
+                    if (autoScroll && autoScroll.checked) {
+                        const term = document.getElementById('process-live-logs');
+                        term.scrollTop = term.scrollHeight;
+                    }
+                }
+            }
+
+            if (status.status === 'downloaded' || status.status === 'processed' || status.status === 'failed') {
+                const btn = document.getElementById(`btn-cancel-${videoId}`);
+                if(btn) btn.style.display = 'none';
+            }
 
             if (status.status === 'downloaded') {
                 if (progressEl) progressEl.style.width = '100%';
@@ -559,6 +580,7 @@ function renderVideoGrid(videos) {
                     <div class="video-actions">
                         ${v.status === 'downloaded' ? `<button class="btn-icon" onclick="event.stopPropagation();quickProcess('${v.id}')" title="Xử lý">⚡</button>` : ''}
                         ${(v.status === 'processed' || v.status === 'downloaded') ? `<button class="btn-icon" onclick="event.stopPropagation();quickPublish('${v.id}')" title="Đăng">📤</button>` : ''}
+                        ${v.status === 'failed' ? `<button class="btn-icon" onclick="event.stopPropagation();showModal('Chi tiết lỗi', '<pre style=\\\'white-space:pre-wrap;font-size:12px;color:var(--accent-danger);\\\'>' + escapeHtml(v.error_message || 'Không rõ lỗi') + '</pre>')" title="Xem Lỗi">⚠️</button>` : ''}
                         <button class="btn-icon" onclick="event.stopPropagation();deleteVideo('${v.id}')" title="Xóa" style="color:var(--accent-danger);">🗑️</button>
                     </div>
                 </div>
@@ -980,11 +1002,37 @@ async function processVideo() {
                     <span id="badge-status-${videoId}" class="badge badge-processing">⏳ Processing</span>
                     <span style="font-size:12px;color:var(--text-tertiary);">ID: ${videoId}</span>
                 </div>
-                <div id="progress-text-${videoId}" style="font-size:13px;font-weight:700;color:var(--accent-primary);">0%</div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <button class="btn btn-ghost btn-sm" id="btn-cancel-${videoId}" onclick="cancelProcess('${videoId}')" style="color:var(--accent-danger);padding:2px 8px;font-size:12px;">🛑 Hủy</button>
+                    <div id="progress-text-${videoId}" style="font-size:13px;font-weight:700;color:var(--accent-primary);">0%</div>
+                </div>
             </div>
             <div class="progress-bar" style="height:8px;"><div class="progress-fill" id="progress-${videoId}" style="width:0%"></div></div>
         `;
     } catch (err) {
+        showToast(`Lỗi: ${err.message}`, 'error');
+    }
+}
+
+async function cancelProcess(videoId) {
+    try {
+        await api(`/api/process/${videoId}/cancel`, { method: 'POST' });
+        showToast('Đã gửi yêu cầu hủy', 'info');
+        
+        const btn = document.getElementById(`btn-cancel-${videoId}`);
+        if(btn) btn.style.display = 'none';
+        
+        if(state.pollIntervals[videoId]) {
+            clearInterval(state.pollIntervals[videoId]);
+            delete state.pollIntervals[videoId];
+        }
+        
+        const badgeEl = document.getElementById(`badge-status-${videoId}`);
+        if (badgeEl) {
+            badgeEl.className = 'badge badge-failed';
+            badgeEl.innerHTML = '❌ Canceled';
+        }
+    } catch(err) {
         showToast(`Lỗi: ${err.message}`, 'error');
     }
 }
@@ -2872,4 +2920,340 @@ async function autoConvertShopeeLink() {
         btn.disabled = false;
         btn.innerHTML = originalText;
     }
+}
+
+// ═══════════════════════════════════════════
+// DOUYIN PROFILE SCAN
+// ═══════════════════════════════════════════
+let douyinProfileVideos = [];
+
+async function scanDouyinProfile() {
+    const url = document.getElementById('douyin-profile-url').value.trim();
+    const limit = document.getElementById('douyin-profile-limit').value || 30;
+    if (!url) { showToast('Vui lòng nhập URL profile Douyin', 'error'); return; }
+
+    const btn = document.getElementById('btn-scan-douyin');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Đang quét...';
+    document.getElementById('douyin-scan-status').innerHTML = '<div class="badge badge-processing">🔍 Đang quét profile Douyin qua Playwright, có thể mất 1-2 phút...</div>';
+
+    try {
+        const data = await api('/api/profile/douyin-list-videos', {
+            method: 'POST',
+            body: JSON.stringify({ url, limit: parseInt(limit) }),
+        });
+
+        douyinProfileVideos = data.videos || [];
+        document.getElementById('douyin-video-count').textContent = douyinProfileVideos.length;
+        document.getElementById('douyin-scan-status').innerHTML = `<div class="badge badge-success">✅ Tìm thấy ${douyinProfileVideos.length} video</div>`;
+
+        renderDouyinProfileVideos();
+    } catch (err) {
+        showToast(`Lỗi quét: ${err.message}`, 'error');
+        document.getElementById('douyin-scan-status').innerHTML = `<div class="badge badge-failed">❌ ${err.message}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🔍 Quét Danh Sách';
+    }
+}
+
+function renderDouyinProfileVideos() {
+    const container = document.getElementById('douyin-video-grid');
+    if (!douyinProfileVideos.length) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">Không tìm thấy video</div></div>';
+        return;
+    }
+    container.innerHTML = douyinProfileVideos.map((v, i) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border-color);">
+            <input type="checkbox" class="douyin-video-cb" data-url="${escapeHtml(v.url)}" data-direct="${escapeHtml(v.direct_url || '')}" checked style="flex-shrink:0;">
+            ${v.thumbnail ? `<img src="${v.thumbnail}" style="width:60px;height:40px;object-fit:cover;border-radius:4px;flex-shrink:0;" onerror="this.style.display='none'">` : ''}
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(v.title || 'Untitled')}</div>
+                <div style="font-size:10px;color:var(--text-tertiary);">
+                    ${v.duration && v.duration !== '0' ? `⏱ ${Math.round(v.duration)}s` : ''}
+                    ${v.views && v.views !== '0' ? ` • 👁 ${parseInt(v.views).toLocaleString()}` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function selectAllDouyinVideos() {
+    const cbs = document.querySelectorAll('.douyin-video-cb');
+    if (!cbs.length) return;
+    const allChecked = [...cbs].every(cb => cb.checked);
+    cbs.forEach(cb => cb.checked = !allChecked);
+}
+
+async function downloadSelectedDouyinVideos() {
+    const cbs = document.querySelectorAll('.douyin-video-cb:checked');
+    const videos = [...cbs].map(cb => ({
+        url: cb.dataset.url,
+        direct_url: cb.dataset.direct
+    })).filter(v => v.url);
+
+    if (!videos.length) { showToast('Vui lòng chọn ít nhất 1 video để tải', 'error'); return; }
+
+    if (!confirm(`Bạn có chắc muốn tải ${videos.length} video đã chọn không?`)) return;
+
+    try {
+        await api('/api/profile/douyin-download-selected', {
+            method: 'POST',
+            body: JSON.stringify({ videos }),
+        });
+        showToast(`Đã đưa ${videos.length} video vào hàng đợi tải xuống`, 'success');
+        
+        navigateTo('library');
+        
+    } catch (err) {
+        showToast(`Lỗi: ${err.message}`, 'error');
+    }
+}
+
+
+// ==========================================
+// UPLOAD VIDEO (BULK)
+// ==========================================
+async function handleVideoUpload(event) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    
+    showToast(`Đang tải lên ${files.length} video...`, 'info');
+    let successCount = 0;
+    
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.size > 500 * 1024 * 1024) {
+            showToast(`Video ${file.name} quá lớn (Tối đa 500MB)`, 'warning');
+            continue;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            const response = await fetch('/api/videos/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                successCount++;
+            }
+        } catch (err) {
+            console.error('Upload error:', err);
+        }
+    }
+    
+    if (successCount > 0) {
+        showToast(`Tải lên thành công ${successCount}/${files.length} video!`, 'success');
+        loadVideos();
+        loadStats();
+    } else {
+        showToast('Lỗi khi tải lên video', 'error');
+    }
+    
+    event.target.value = ''; // Reset input
+}
+
+
+// ==========================================
+// UPLOAD LOGO WATERMARK
+// ==========================================
+async function handleLogoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (file.type !== 'image/png') {
+        showToast('Chỉ hỗ trợ file ảnh định dạng PNG', 'warning');
+        return;
+    }
+    
+    if (file.size > 5 * 1024 * 1024) {
+        showToast('File Logo quá lớn. Tối đa 5MB.', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    showToast('Đang tải lên Logo...', 'info');
+    
+    try {
+        const response = await fetch('/api/settings/logo', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            showToast('Tải lên Logo thành công!', 'success');
+        } else {
+            showToast(result.detail || result.message || 'Lỗi khi tải lên Logo', 'error');
+        }
+    } catch (err) {
+        console.error('Upload logo error:', err);
+        showToast('Lỗi khi tải lên Logo', 'error');
+    } finally {
+        event.target.value = ''; // Reset input
+    }
+}
+
+
+// ==========================================
+// SYSTEM CLEANUP
+// ==========================================
+async function runSystemCleanup() {
+    if (!confirm('Hành động này sẽ xóa các file video Gốc và video Đã Xử Lý của những video đã có trạng thái Canceled/Failed hoặc Đã Đăng (Published) để giải phóng ổ cứng. Bạn có chắc chắn?')) return;
+    
+    showToast('Đang quét và dọn rác...', 'info');
+    try {
+        const response = await fetch('/api/system/cleanup', { method: 'POST' });
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            showToast(result.message, 'success');
+        } else {
+            showToast('Lỗi khi dọn dẹp', 'error');
+        }
+    } catch (err) {
+        console.error('Cleanup error:', err);
+        showToast('Lỗi khi dọn dẹp', 'error');
+    }
+}
+
+// ==========================================
+// CAMPAIGNS (AUTO PILOT)
+// ==========================================
+function showCreateCampaignModal() {
+    console.log("showCreateCampaignModal clicked");
+    try {
+        document.getElementById('camp-name').value = '';
+        document.getElementById('camp-target').value = '';
+        document.getElementById('camp-page').value = '';
+        document.getElementById('modal-campaign').classList.add('active');
+        console.log("Modal opened successfully");
+    } catch(err) {
+        console.error("Error opening modal:", err);
+        alert("Lỗi: " + err.message);
+    }
+}
+
+async function loadCampaigns() {
+    try {
+        const response = await fetch('/api/campaigns');
+        const data = await response.json();
+        
+        const grid = document.getElementById('campaigns-grid');
+        if (!grid) return;
+        
+        grid.innerHTML = '';
+        if (data.campaigns.length === 0) {
+            grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;">Chưa có chiến dịch nào. Hãy tạo chiến dịch mới.</div>';
+            return;
+        }
+        
+        data.campaigns.forEach(camp => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.style.position = 'relative';
+            if (!camp.is_active) {
+                card.style.opacity = '0.6';
+            }
+            
+            card.innerHTML = `
+                <div class="card-body">
+                    <h3 style="margin-top:0;">${camp.name}</h3>
+                    <p style="font-size:12px; word-break:break-all;">🎯 ${camp.target_url}</p>
+                    <p style="font-size:12px;">📘 Đăng lên: ${camp.page_id || 'Chưa chọn'}</p>
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <span class="badge">Quét: ${camp.scan_hour}h</span>
+                        <span class="badge">Đăng: ${camp.post_hour}h</span>
+                    </div>
+                </div>
+                <div class="card-footer" style="display:flex; justify-content:space-between;">
+                    <button class="btn btn-sm ${camp.is_active ? 'btn-secondary' : 'btn-primary'}" onclick="toggleCampaign('${camp.id}')">
+                        ${camp.is_active ? '⏸️ Tạm dừng' : '▶️ Tiếp tục'}
+                    </button>
+                    <button class="btn btn-sm btn-ghost" style="color:var(--danger)" onclick="deleteCampaign('${camp.id}')">🗑️ Xóa</button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    } catch (err) {
+        console.error('Error loading campaigns:', err);
+    }
+}
+
+async function saveCampaign() {
+    const name = document.getElementById('camp-name').value.trim();
+    const targetUrl = document.getElementById('camp-target').value.trim();
+    const pageId = document.getElementById('camp-page').value.trim();
+    const scanHour = parseInt(document.getElementById('camp-scan').value);
+    const postHour = parseInt(document.getElementById('camp-post').value);
+    
+    if (!name || !targetUrl) {
+        showToast('Vui lòng nhập Tên và Link mục tiêu', 'warning');
+        return;
+    }
+    
+    // Lấy các option xử lý
+    const opts = {};
+    document.querySelectorAll('.camp-opt').forEach(chk => {
+        opts[chk.value] = chk.checked;
+    });
+    
+    const payload = {
+        name: name,
+        target_url: targetUrl,
+        page_id: pageId,
+        scan_hour: scanHour,
+        post_hour: postHour,
+        processing_options: opts
+    };
+    
+    try {
+        const response = await fetch('/api/campaigns', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        
+        if (response.ok) {
+            showToast('Đã lưu chiến dịch!', 'success');
+            closeModal('modal-campaign');
+            loadCampaigns();
+        } else {
+            showToast('Lỗi khi lưu chiến dịch', 'error');
+        }
+    } catch (err) {
+        console.error(err);
+        showToast('Lỗi mạng', 'error');
+    }
+}
+
+async function toggleCampaign(id) {
+    try {
+        await fetch('/api/campaigns/' + id + '/toggle', {method: 'POST'});
+        loadCampaigns();
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function deleteCampaign(id) {
+    if (!confirm('Xóa chiến dịch này?')) return;
+    try {
+        await fetch('/api/campaigns/' + id, {method: 'DELETE'});
+        loadCampaigns();
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+// Ensure Campaigns are loaded when tab is active
+const navCamp = document.getElementById('nav-campaigns');
+if(navCamp) {
+    navCamp.addEventListener('click', loadCampaigns);
 }

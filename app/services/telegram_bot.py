@@ -1,5 +1,6 @@
 import asyncio
 import os
+import json
 import logging
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -80,12 +81,17 @@ async def menu_library(callback: CallbackQuery):
 @dp.callback_query(F.data == "menu_pages")
 async def menu_pages(callback: CallbackQuery):
     pages = await db.get_all_fb_pages()
+    text = "📄 **Danh sách Fanpage & Kênh**\n\n"
     if not pages:
-        await callback.message.edit_text("❌ Chưa có Fanpage nào. Hãy kết nối trên Web trước.")
-        return
-    text = "📄 **Danh sách Fanpage**\n\n"
-    for i, p in enumerate(pages, 1):
-        text += f"{i}. **{p['page_name']}** ({p.get('category', 'Page')})\n"
+        text += "❌ Chưa có Fanpage hoặc Kênh nào được liên kết.\n\n"
+    else:
+        for i, p in enumerate(pages, 1):
+            text += f"{i}. **{p['page_name']}** ({p.get('category', 'Page')})\n"
+        text += "\n"
+    
+    text += "💡 **Cách liên kết thêm trực tiếp:**\n"
+    text += "1️⃣ Gửi **Facebook User Access Token** (bắt đầu bằng `EA...`) để tự động quét & nạp toàn bộ Fanpage của bạn.\n"
+    text += "2️⃣ Gửi `tele:<tên_kênh>` (ví dụ: `tele:@my_channel` hoặc `tele:-10012345678`) để liên kết kênh Telegram làm nơi Reup."
     await callback.message.edit_text(text, parse_mode="Markdown")
 
 @dp.callback_query(F.data == "menu_stats")
@@ -118,6 +124,257 @@ async def menu_help(callback: CallbackQuery):
 
 
 # ═══════════════════════════════════════════
+# Handle Tokens (Facebook & Telegram Channels)
+# ═══════════════════════════════════════════
+@dp.message(F.text.startswith("EA") | F.text.startswith("tele:"))
+async def handle_tokens(message: Message, state: FSMContext):
+    token = message.text.strip()
+    msg = await message.answer("🔄 Đang xử lý Token...")
+    try:
+        import uuid
+        if token.startswith("tele:"):
+            chat_id = token.replace("tele:", "").strip()
+            page_data = {
+                "id": str(uuid.uuid4())[:8],
+                "page_id": token,
+                "page_name": f"Telegram: {chat_id}",
+                "access_token": "telegram_bot",
+                "category": "Telegram Channel",
+                "is_active": 1,
+            }
+            existing = await db.get_all_fb_pages()
+            for p in existing:
+                if p["page_id"] == token:
+                    await msg.edit_text(f"✅ Kênh Telegram {chat_id} đã tồn tại trong hệ thống!")
+                    return
+            await db.create_fb_page(page_data)
+            await msg.edit_text(f"✅ Đã thêm Kênh Telegram: {chat_id} vào danh sách Fanpage thành công!")
+            return
+
+        # It's a Facebook Token
+        from app.services.facebook_api import FacebookAPI
+        long_token = await FacebookAPI.extend_token(token)
+        pages = await FacebookAPI.get_user_pages(long_token)
+        
+        if pages and "error" in pages[0]:
+            await msg.edit_text(f"❌ Lỗi Token: {pages[0]['error']}")
+            return
+            
+        existing_pages = await db.get_all_fb_pages()
+        existing_map = {p["page_id"]: p for p in existing_pages}
+        
+        saved = 0
+        updated = 0
+        for page in pages:
+            if page["page_id"] in existing_map:
+                db_page = existing_map[page["page_id"]]
+                await db.update_fb_page(db_page["id"], {
+                    "access_token": page["access_token"],
+                    "page_name": page["page_name"],
+                    "is_active": 1
+                })
+                updated += 1
+            else:
+                page_data = {
+                    "id": str(uuid.uuid4())[:8],
+                    "page_id": page["page_id"],
+                    "page_name": page["page_name"],
+                    "access_token": page["access_token"],
+                    "category": page.get("category", ""),
+                    "is_active": 1,
+                }
+                await db.create_fb_page(page_data)
+                saved += 1
+                
+        await msg.edit_text(f"✅ Thành công!\n\n🆕 Thêm mới: {saved} Page\n🔄 Cập nhật: {updated} Page\n\nBạn có thể gửi link video để bắt đầu Reup.")
+    except Exception as e:
+        logger.error(f"Telegram token error: {e}")
+        await msg.edit_text(f"❌ Lỗi hệ thống: {e}")
+
+
+# ═══════════════════════════════════════════
+# Handle Direct Media Uploads (Video, Photo, Document)
+# ═══════════════════════════════════════════
+@dp.message(F.video)
+async def handle_uploaded_video(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    import uuid
+    video_id = str(uuid.uuid4())[:8]
+    
+    msg = await message.answer("📥 **Đang tải video của bạn từ Telegram...**", parse_mode="Markdown")
+    
+    try:
+        dest_filename = f"{video_id}_uploaded.mp4"
+        dest_path = os.path.join(settings.DOWNLOAD_DIR, dest_filename)
+        os.makedirs(settings.DOWNLOAD_DIR, exist_ok=True)
+        
+        await bot.download(message.video, destination=dest_path)
+        
+        from app.services.downloader import probe_video
+        probe_info = await probe_video(dest_path)
+        file_size = os.path.getsize(dest_path)
+        
+        video_data = {
+            "id": video_id,
+            "source_url": "telegram_upload",
+            "source_platform": "telegram",
+            "status": "downloaded",
+            "title": message.video.file_name or f"Telegram Video {video_id}",
+            "description": message.caption or "",
+            "original_path": dest_path,
+            "original_filename": dest_filename,
+            "thumbnail_path": "",
+            "file_size": file_size,
+            "duration": probe_info.get("duration", message.video.duration or 0),
+            "width": probe_info.get("width", message.video.width or 0),
+            "height": probe_info.get("height", message.video.height or 0),
+        }
+        await db.create_video(video_data)
+        
+        user_sessions[user_id] = {
+            "url": "telegram_upload",
+            "video_id": video_id,
+            "options": {"watermark_text": "ReupMaster"}
+        }
+        await send_process_options(msg, user_id)
+        
+    except Exception as e:
+        logger.error(f"Failed to handle uploaded video: {e}")
+        await msg.edit_text(f"❌ **Lỗi tải video:** {str(e)}", parse_mode="Markdown")
+
+
+@dp.message(F.photo)
+async def handle_uploaded_photo(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    import uuid
+    video_id = str(uuid.uuid4())[:8]
+    
+    msg = await message.answer("📥 **Đang tải ảnh của bạn từ Telegram...**", parse_mode="Markdown")
+    
+    try:
+        album_dir = os.path.join(settings.DOWNLOAD_DIR, f"{video_id}_images")
+        os.makedirs(album_dir, exist_ok=True)
+        
+        photo = message.photo[-1]
+        dest_filename = f"photo_{video_id}.jpg"
+        dest_path = os.path.join(album_dir, dest_filename)
+        
+        await bot.download(photo, destination=dest_path)
+        
+        await db.create_video({
+            "id": video_id,
+            "source_url": "telegram_upload",
+            "source_platform": "telegram",
+            "status": "downloaded",
+            "title": f"Ảnh Telegram {video_id}",
+            "description": message.caption or "",
+            "original_path": album_dir,
+            "thumbnail_path": dest_path,
+            "original_filename": "telegram_images",
+            "duration": 0,
+            "file_size": os.path.getsize(dest_path)
+        })
+        
+        user_sessions[user_id] = {
+            "url": "telegram_upload",
+            "video_id": video_id,
+            "options": {"watermark_text": "ReupMaster"}
+        }
+        await send_process_options(msg, user_id)
+        
+    except Exception as e:
+        logger.error(f"Failed to handle uploaded photo: {e}")
+        await msg.edit_text(f"❌ **Lỗi tải ảnh:** {str(e)}", parse_mode="Markdown")
+
+
+@dp.message(F.document)
+async def handle_uploaded_document(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    mime_type = message.document.mime_type or ""
+    file_name = message.document.file_name or ""
+    
+    is_video = mime_type.startswith("video/") or file_name.lower().endswith((".mp4", ".mkv", ".mov", ".avi", ".3gp", ".webm"))
+    is_image = mime_type.startswith("image/") or file_name.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp"))
+    
+    if not is_video and not is_image:
+        await message.answer("⚠️ File không được hỗ trợ. Vui lòng chỉ gửi video hoặc hình ảnh.")
+        return
+        
+    import uuid
+    video_id = str(uuid.uuid4())[:8]
+    msg = await message.answer("📥 **Đang tải file từ Telegram...**", parse_mode="Markdown")
+    
+    try:
+        os.makedirs(settings.DOWNLOAD_DIR, exist_ok=True)
+        
+        if is_video:
+            dest_filename = f"{video_id}_uploaded.mp4"
+            dest_path = os.path.join(settings.DOWNLOAD_DIR, dest_filename)
+            await bot.download(message.document, destination=dest_path)
+            
+            from app.services.downloader import probe_video
+            probe_info = await probe_video(dest_path)
+            file_size = os.path.getsize(dest_path)
+            
+            video_data = {
+                "id": video_id,
+                "source_url": "telegram_upload",
+                "source_platform": "telegram",
+                "status": "downloaded",
+                "title": file_name or f"Telegram Video {video_id}",
+                "description": message.caption or "",
+                "original_path": dest_path,
+                "original_filename": dest_filename,
+                "thumbnail_path": "",
+                "file_size": file_size,
+                "duration": probe_info.get("duration", 0),
+                "width": probe_info.get("width", 0),
+                "height": probe_info.get("height", 0),
+            }
+            await db.create_video(video_data)
+            
+            user_sessions[user_id] = {
+                "url": "telegram_upload",
+                "video_id": video_id,
+                "options": {"watermark_text": "ReupMaster"}
+            }
+            await send_process_options(msg, user_id)
+            
+        elif is_image:
+            album_dir = os.path.join(settings.DOWNLOAD_DIR, f"{video_id}_images")
+            os.makedirs(album_dir, exist_ok=True)
+            
+            dest_filename = file_name or f"image_{video_id}.jpg"
+            dest_path = os.path.join(album_dir, dest_filename)
+            await bot.download(message.document, destination=dest_path)
+            
+            await db.create_video({
+                "id": video_id,
+                "source_url": "telegram_upload",
+                "source_platform": "telegram",
+                "status": "downloaded",
+                "title": f"Bộ ảnh Telegram ({file_name})",
+                "description": message.caption or "",
+                "original_path": album_dir,
+                "thumbnail_path": dest_path,
+                "original_filename": "telegram_images",
+                "duration": 0,
+                "file_size": os.path.getsize(dest_path)
+            })
+            
+            user_sessions[user_id] = {
+                "url": "telegram_upload",
+                "video_id": video_id,
+                "options": {"watermark_text": "ReupMaster"}
+            }
+            await send_process_options(msg, user_id)
+            
+    except Exception as e:
+        logger.error(f"Failed to handle uploaded document: {e}")
+        await msg.edit_text(f"❌ **Lỗi tải file:** {str(e)}", parse_mode="Markdown")
+
+
+# ═══════════════════════════════════════════
 # Handle URL - Ask Video or Image
 # ═══════════════════════════════════════════
 @dp.message(F.text.regexp(r'(https?://[^\s]+)'))
@@ -130,26 +387,112 @@ async def handle_url(message: Message, state: FSMContext):
         "options": {"watermark_text": "ReupMaster"}
     }
     
-    if "douyin.com/user/" in url.lower():
-        keyboard = [
-            [InlineKeyboardButton(text="🕵️ Quét Profile Douyin (10 videos)", callback_data="scan_douyin_10")],
-            [InlineKeyboardButton(text="🕵️ Quét Profile Douyin (20 videos)", callback_data="scan_douyin_20")]
-        ]
-        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-        await message.answer(
-            "📎 Phát hiện link Douyin Profile!\n\nBạn muốn quét bao nhiêu video gần nhất?",
-            reply_markup=markup
-        )
+    # Check if it's a profile URL
+    is_douyin_profile = "douyin.com/user/" in url
+    is_rednote_profile = "rednote.com/user/" in url or "xiaohongshu.com/user/" in url
+    
+    if is_rednote_profile:
+        await message.answer("⚠️ Bot hiện chưa hỗ trợ quét nguyên Profile RedNote. Vui lòng sử dụng Crawler trên máy tính hoặc gửi từng link bài viết riêng lẻ.")
+        return
+
+    keyboard = []
+    if is_douyin_profile:
+        keyboard.append([InlineKeyboardButton(text="🕵️ Quét Profile Douyin", callback_data="dl_profile_douyin")])
+        msg_text = "📎 Đã nhận link Profile!\n\nBạn muốn quét toàn bộ video từ kênh này?"
     else:
-        keyboard = [
+        keyboard.extend([
             [InlineKeyboardButton(text="🎬 Tải Video", callback_data="dl_video")],
             [InlineKeyboardButton(text="🖼️ Tải Bộ ảnh", callback_data="dl_images")],
+        ])
+        msg_text = "📎 Đã nhận link!\n\nBạn muốn tải dạng nào?"
+        
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await message.answer(msg_text, reply_markup=markup)
+
+@dp.callback_query(F.data == "dl_profile_douyin")
+async def handle_dl_profile_douyin(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if user_id not in user_sessions or "url" not in user_sessions[user_id]:
+        await callback.message.edit_text("❌ Session đã hết hạn.")
+        return
+        
+    url = user_sessions[user_id]["url"]
+    await callback.message.edit_text("⏳ Đang khởi động Crawler quét Profile Douyin... (có thể mất 1-2 phút)")
+    
+    try:
+        from app.services.douyin_service import douyin_service
+        profile_data = await douyin_service.get_profile(url, count=20)
+        
+        if "error" in profile_data:
+            await callback.message.edit_text(f"❌ Lỗi quét Profile: {profile_data['error']}")
+            return
+            
+        data = profile_data.get("data", {})
+        userInfo = data.get("userInfo", {})
+        videos = data.get("videos", [])
+        
+        if not videos:
+            await callback.message.edit_text("❌ Không tìm thấy video nào trên kênh này.")
+            return
+            
+        # Store videos in session to allow downloading them later
+        user_sessions[user_id]["profile_videos"] = videos
+        
+        text = f"👤 **Kênh:** {userInfo.get('nickname', 'Unknown')}\n"
+        text += f"📦 **Tìm thấy:** {len(videos)} videos\n\n"
+        text += "Chọn số lượng video muốn tải về (từ mới nhất):"
+        
+        kb = [
+            [
+                InlineKeyboardButton(text="Tải 5 video đầu", callback_data="dl_prof_vids_5"),
+                InlineKeyboardButton(text="Tải 10 video", callback_data="dl_prof_vids_10")
+            ],
+            [InlineKeyboardButton(text=f"Tải tất cả ({len(videos)})", callback_data=f"dl_prof_vids_{len(videos)}")]
         ]
-        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-        await message.answer(
-            "📎 Đã nhận link!\n\nBạn muốn tải dạng nào?",
-            reply_markup=markup
-        )
+        
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
+        
+    except Exception as e:
+        logger.error(f"Telegram profile scan error: {e}")
+        await callback.message.edit_text(f"❌ Lỗi hệ thống: {e}")
+
+@dp.callback_query(F.data.startswith("dl_prof_vids_"))
+async def handle_dl_profile_videos(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if user_id not in user_sessions or "profile_videos" not in user_sessions[user_id]:
+        await callback.message.edit_text("❌ Session đã hết hạn.")
+        return
+        
+    count_str = callback.data.replace("dl_prof_vids_", "")
+    count = int(count_str)
+    
+    videos = user_sessions[user_id]["profile_videos"][:count]
+    await callback.message.edit_text(f"⏳ Đang xếp {len(videos)} video vào hàng đợi tải xuống...")
+    
+    import uuid
+    from app.services.downloader import download_video
+    
+    for vid in videos:
+        # Tải ngầm hoặc gửi link cho downloader
+        url = f"https://www.douyin.com/video/{vid.get('id')}"
+        video_id = str(uuid.uuid4())[:8]
+        
+        await db.create_video({
+            "id": video_id,
+            "source_url": url,
+            "source_platform": "douyin",
+            "status": "downloading"
+        })
+        
+        # Tạo task chạy ngầm
+        import asyncio
+        asyncio.create_task(download_video(url, video_id=video_id))
+        
+        # Gửi thông báo ngắn cho người dùng
+        await bot.send_message(user_id, f"📥 Đang tải: {vid.get('desc', '')[:30]}...")
+        await asyncio.sleep(1)
+        
+    await bot.send_message(user_id, f"✅ Đã đưa {len(videos)} video vào tiến trình tải ngầm. Bạn có thể kiểm tra ở Web UI hoặc nhắn link mới!")
 
 
 @dp.callback_query(F.data == "dl_video")
@@ -222,61 +565,6 @@ async def handle_dl_images(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(f"❌ Lỗi: {str(e)}")
 
 
-@dp.callback_query(F.data.startswith("scan_douyin_"))
-async def handle_scan_douyin(callback: CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    if user_id not in user_sessions or "url" not in user_sessions[user_id]:
-        await callback.message.edit_text("❌ Session đã hết hạn.")
-        return
-    
-    url = user_sessions[user_id]["url"]
-    count = int(callback.data.split("_")[2])
-    
-    await callback.message.edit_text(f"⏳ Đang khởi động trình duyệt quét Profile Douyin ({count} videos). Việc này có thể mất 15-30 giây...")
-    
-    try:
-        from app.services.douyin_scraper import fetch_douyin_profile_videos
-        result = await fetch_douyin_profile_videos(url, max_count=count)
-        
-        videos = result.get("videos", [])
-        if not videos:
-            await callback.message.edit_text("❌ Không tìm thấy video nào trên Profile này.")
-            return
-            
-        user_info = result.get("userInfo", {})
-        
-        # Save videos to db as 'downloaded' or create process queue
-        # For simplicity, we just notify and process one by one or batch add to queue
-        # In a real batch workflow, we'd add all to process_queue.
-        # But we need to download them first. The scraper only gets the raw video URLs.
-        # So let's insert them into the DB and let the user know.
-        
-        text = f"✅ Đã quét xong Profile: **{user_info.get('nickname')}**\n"
-        text += f"Tìm thấy {len(videos)} videos.\n\n"
-        text += "Do số lượng nhiều, hệ thống sẽ tự động tải và xếp vào Thư viện. Bạn có thể vào Web để theo dõi và xử lý hàng loạt nhé!"
-        
-        await callback.message.edit_text(text, parse_mode="Markdown")
-        
-        import uuid
-        for v in videos:
-            vid_id = str(uuid.uuid4())[:8]
-            # Create video record, then we should dispatch a download task
-            await db.create_video({
-                "id": vid_id,
-                "source_url": v.get("videoUrl"),
-                "source_platform": "douyin",
-                "status": "pending",
-                "title": v.get("desc", ""),
-            })
-            # Start background download
-            from app.services.downloader import download_video
-            asyncio.create_task(download_video(v.get("videoUrl"), video_id=vid_id))
-            
-    except Exception as e:
-        logger.error(f"Telegram scan_douyin error: {e}")
-        await callback.message.edit_text(f"❌ Lỗi: {str(e)}")
-
-
 # ═══════════════════════════════════════════
 # Process Options Menu (Dynamic from VideoProcessor)
 # ═══════════════════════════════════════════
@@ -301,6 +589,8 @@ async def send_process_options(msg, user_id):
     if row:
         keyboard.append(row)
 
+    keyboard.append([InlineKeyboardButton(text="🎙️ VIETSUB + LỒNG TIẾNG", callback_data="opt_vietsub")])
+    keyboard.append([InlineKeyboardButton(text="📝 VIETSUB (CHỈ PHỤ ĐỀ)", callback_data="opt_vietsub_only")])
     keyboard.append([InlineKeyboardButton(text="⚡ BẮT ĐẦU XỬ LÝ ⚡", callback_data="opt_start")])
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await msg.edit_text(
@@ -319,11 +609,210 @@ async def handle_toggle_option(callback: CallbackQuery, state: FSMContext):
     opts = user_sessions[user_id]["options"]
     default_val = VideoProcessor.AVAILABLE_OPTIONS.get(key, {}).get("default", False)
     opts[key] = not opts.get(key, default_val)
+    
+    # Mutual exclusivity for Vietsub options
+    if key == "vietsub_dubbing" and opts[key]:
+        opts["vietsub_only"] = False
+    elif key == "vietsub_only" and opts[key]:
+        opts["vietsub_dubbing"] = False
+
     if key == "mirror":
         opts["flip"] = opts["mirror"]
     elif key == "add_watermark_text":
         opts["watermark"] = opts["add_watermark_text"]
     await send_process_options(callback.message, user_id)
+
+
+@dp.callback_query(F.data == "opt_vietsub_only")
+async def handle_vietsub_only(callback: CallbackQuery, state: FSMContext):
+    """Run Vietsub subtitle-only pipeline (no voiceover)."""
+    user_id = callback.from_user.id
+    if user_id not in user_sessions:
+        await callback.message.edit_text("❌ Session đã hết hạn.")
+        return
+
+    video_id = user_sessions[user_id].get("video_id")
+    if not video_id:
+        await callback.message.edit_text("❌ Không tìm thấy video.")
+        return
+
+    await callback.message.edit_text(
+        "📝 **VIETSUB (CHỈ PHỤ ĐỀ)**\n\n"
+        "⏳ Đang chạy pipeline AI...\n"
+        "1️⃣ Tách âm thanh...\n"
+        "2️⃣ Nhận dạng giọng nói (Whisper)...\n"
+        "3️⃣ Dịch sang Tiếng Việt (AI)...\n"
+        "4️⃣ Burn phụ đề lên video...\n\n"
+        "⏱ Quá trình này mất 1-3 phút, vui lòng chờ.",
+        parse_mode="Markdown"
+    )
+
+    try:
+        from app.services.vietsub_service import full_vietsub_pipeline
+
+        video = await db.get_video(video_id)
+        if not video:
+            await callback.message.edit_text("❌ Video không tồn tại.")
+            return
+
+        video_path = video.get("original_path")
+        if not video_path or not os.path.exists(video_path):
+            await callback.message.edit_text("❌ File video không tồn tại trên ổ đĩa.")
+            return
+
+        result = await full_vietsub_pipeline(
+            video_path=video_path,
+            include_voiceover=False,
+            include_subtitles=True,
+            original_volume=1.0,  # Keep original audio
+        )
+
+        if "error" in result:
+            await callback.message.edit_text(
+                f"❌ **Vietsub thất bại:**\n{result['error']}",
+                parse_mode="Markdown"
+            )
+            return
+
+        await db.update_video(video_id, {
+            "status": "processed",
+            "processed_path": result["output_path"],
+        })
+
+        output_path = result["output_path"]
+        lang = result.get("source_lang", "?")
+        segs = result.get("segment_count", 0)
+
+        await callback.message.edit_text(
+            f"✅ **Vietsub phụ đề hoàn tất!**\n\n"
+            f"🌍 Ngôn ngữ gốc: **{lang}**\n"
+            f"📝 Số câu phụ đề: **{segs}**\n"
+            f"🔊 Âm thanh gốc: Giữ nguyên\n\n"
+            f"⏳ Đang gửi video...",
+            parse_mode="Markdown"
+        )
+
+        from aiogram.types import FSInputFile
+        file_size = os.path.getsize(output_path)
+        if file_size > 50 * 1024 * 1024:
+            await bot.send_message(user_id, "⚠️ File quá lớn (>50MB), hãy tải từ Web UI.")
+        else:
+            await bot.send_video(
+                user_id, FSInputFile(output_path),
+                caption=f"📝 Video đã Vietsub (chỉ phụ đề)\n🌍 {lang} → vi | {segs} câu"
+            )
+
+    except Exception as e:
+        logger.error(f"Telegram vietsub-only error: {e}")
+        await callback.message.edit_text(f"❌ Lỗi hệ thống: {e}")
+
+
+@dp.callback_query(F.data == "opt_vietsub")
+async def handle_vietsub(callback: CallbackQuery, state: FSMContext):
+    """Run full Vietsub + Lồng Tiếng pipeline from Telegram."""
+    user_id = callback.from_user.id
+    if user_id not in user_sessions:
+        await callback.message.edit_text("❌ Session đã hết hạn.")
+        return
+
+    video_id = user_sessions[user_id].get("video_id")
+    if not video_id:
+        await callback.message.edit_text("❌ Không tìm thấy video.")
+        return
+
+    await callback.message.edit_text(
+        "🎙️ **VIETSUB + LỒNG TIẾNG**\n\n"
+        "⏳ Đang chạy pipeline AI...\n"
+        "1️⃣ Tách âm thanh...\n"
+        "2️⃣ Nhận dạng giọng nói (Whisper)...\n"
+        "3️⃣ Dịch sang Tiếng Việt (AI)...\n"
+        "4️⃣ Lồng tiếng Việt (Edge-TTS)...\n"
+        "5️⃣ Render video cuối cùng...\n\n"
+        "⏱ Quá trình này mất 2-5 phút, vui lòng chờ.",
+        parse_mode="Markdown"
+    )
+
+    try:
+        from app.services.vietsub_service import full_vietsub_pipeline
+
+        video = await db.get_video(video_id)
+        if not video:
+            await callback.message.edit_text("❌ Video không tồn tại.")
+            return
+
+        video_path = video.get("original_path")
+        if not video_path or not os.path.exists(video_path):
+            await callback.message.edit_text("❌ File video không tồn tại trên ổ đĩa.")
+            return
+
+        result = await full_vietsub_pipeline(
+            video_path=video_path,
+            include_voiceover=True,
+            include_subtitles=True,
+        )
+
+        if "error" in result:
+            await callback.message.edit_text(
+                f"❌ **Vietsub thất bại:**\n{result['error']}\n\n"
+                f"📊 Steps: {json.dumps(result.get('steps', {}), ensure_ascii=False, indent=1)}",
+                parse_mode="Markdown"
+            )
+            return
+
+        # Update DB
+        await db.update_video(video_id, {
+            "status": "processed",
+            "processed_path": result["output_path"],
+        })
+
+        output_path = result["output_path"]
+        lang = result.get("source_lang", "?")
+        segs = result.get("segment_count", 0)
+
+        await callback.message.edit_text(
+            f"✅ **Vietsub + Lồng tiếng hoàn tất!**\n\n"
+            f"🌍 Ngôn ngữ gốc: **{lang}**\n"
+            f"📝 Số câu phụ đề: **{segs}**\n"
+            f"📁 File: {os.path.basename(output_path)}\n\n"
+            f"⏳ Đang gửi video...",
+            parse_mode="Markdown"
+        )
+
+        # Send video to user
+        from aiogram.types import FSInputFile
+        file_size = os.path.getsize(output_path)
+        if file_size > 50 * 1024 * 1024:
+            await bot.send_message(
+                user_id,
+                "⚠️ File Vietsub quá lớn (>50MB) để gửi qua Telegram.\n"
+                "Hãy tải từ Web UI."
+            )
+        else:
+            await bot.send_video(
+                user_id, FSInputFile(output_path),
+                caption=f"🎙️ Video đã Vietsub + Lồng tiếng\n🌍 {lang} → vi | {segs} câu"
+            )
+
+        # Now ask about publishing
+        pages = await db.get_all_fb_pages()
+        keyboard = []
+        for p in pages:
+            keyboard.append([InlineKeyboardButton(text=f"📄 {p['page_name']}", callback_data=f"page_{p['id']}")])
+        keyboard.append([InlineKeyboardButton(text="✅ Chỉ tải về, không đăng", callback_data="done_skip")])
+        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+        if pages:
+            await bot.send_message(
+                user_id,
+                "📤 Bạn muốn đăng video Vietsub lên đâu?",
+                reply_markup=markup
+            )
+        else:
+            await bot.send_message(user_id, "✅ Hoàn tất! Chưa có Fanpage nào để đăng.")
+
+    except Exception as e:
+        logger.error(f"Telegram vietsub error: {e}")
+        await callback.message.edit_text(f"❌ Lỗi hệ thống: {e}")
 
 
 @dp.callback_query(F.data == "opt_start")
@@ -341,7 +830,9 @@ async def handle_start_process(callback: CallbackQuery, state: FSMContext):
 
     # Poll for completion
     logger.info(f"Checking process status for video_id: {video_id}")
-    for _ in range(120):  # max 4 min
+    from app.services.progress import video_progress
+    last_text = ""
+    for _ in range(150):  # max 5 min
         await asyncio.sleep(2)
         video = await db.get_video(video_id)
         if not video:
@@ -353,6 +844,15 @@ async def handle_start_process(callback: CallbackQuery, state: FSMContext):
         if video.get("status") == "failed":
             await callback.message.edit_text(f"❌ Lỗi xử lý: {video.get('error_message')}")
             return
+            
+        progress = video_progress.get(video_id, 0.0)
+        progress_text = f"⏳ Đang xử lý lách bản quyền: {progress}%..."
+        if progress_text != last_text:
+            try:
+                await callback.message.edit_text(progress_text)
+                last_text = progress_text
+            except Exception:
+                pass
     else:
         await callback.message.edit_text("❌ Timeout: Xử lý quá lâu.")
         return

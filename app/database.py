@@ -73,6 +73,19 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS campaigns (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    target_url TEXT NOT NULL,
+    scan_hour INTEGER DEFAULT 0,
+    post_hour INTEGER DEFAULT 12,
+    page_id TEXT DEFAULT '',
+    processing_options TEXT DEFAULT '{}',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    last_scan_at TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS seeding_accounts (
     id TEXT PRIMARY KEY,
     name TEXT DEFAULT '',
@@ -618,3 +631,70 @@ async def get_page_stats_history(page_db_id: str, days: int = 30) -> list[dict]:
     finally:
         await db.close()
 
+
+
+
+# --- CAMPAIGNS ---
+async def get_all_campaigns():
+    db = await get_db()
+    try:
+        cursor = await db.execute('SELECT * FROM campaigns ORDER BY created_at DESC')
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+async def get_active_campaigns():
+    db = await get_db()
+    try:
+        cursor = await db.execute('SELECT * FROM campaigns WHERE is_active=1')
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+async def get_campaign(campaign_id: str):
+    db = await get_db()
+    try:
+        cursor = await db.execute('SELECT * FROM campaigns WHERE id = ?', (campaign_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+async def create_campaign(data: dict):
+    if 'created_at' not in data:
+        from datetime import datetime
+        data['created_at'] = datetime.now().isoformat()
+        
+    fields = ', '.join(data.keys())
+    placeholders = ', '.join(['?'] * len(data))
+    values = tuple(data.values())
+    
+    db = await get_db()
+    try:
+        await db.execute(f'INSERT INTO campaigns ({fields}) VALUES ({placeholders})', values)
+        await db.commit()
+    finally:
+        await db.close()
+
+async def update_campaign(campaign_id: str, data: dict):
+    if not data:
+        return
+    set_clause = ', '.join([f'{k} = ?' for k in data.keys()])
+    values = tuple(data.values()) + (campaign_id,)
+    
+    db = await get_db()
+    try:
+        await db.execute(f'UPDATE campaigns SET {set_clause} WHERE id = ?', values)
+        await db.commit()
+    finally:
+        await db.close()
+
+async def delete_campaign(campaign_id: str):
+    db = await get_db()
+    try:
+        await db.execute('DELETE FROM campaigns WHERE id = ?', (campaign_id,))
+        await db.commit()
+    finally:
+        await db.close()

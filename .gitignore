@@ -17,3 +17,6 @@ storage/
 
 # Tool cache
 .gemini/
+
+# Node.js
+node_modules/

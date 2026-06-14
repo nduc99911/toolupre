@@ -93,10 +93,19 @@ async def startup():
     await db.init_db()
     post_scheduler.start()
     
+    # Start Douyin API Server
+    from app.services.douyin_service import douyin_service
+    douyin_service.start()
+    
     # Start Telegram Bot in background
     import asyncio
     from app.services.telegram_bot import start_telegram_bot
     asyncio.create_task(start_telegram_bot())
+
+@app.on_event("shutdown")
+async def shutdown():
+    from app.services.douyin_service import douyin_service
+    douyin_service.stop()
     
     logger.info("ReupMaster Pro started!")
 
@@ -152,6 +161,42 @@ async def api_convert_shopee(request: Request):
         return {"success": True, "short_link": short_link, "message": "Chuyển đổi thành công!"}
     except Exception as e:
         raise HTTPException(400, str(e))
+
+@app.post("/api/system/cleanup")
+async def api_system_cleanup():
+    """Clean up physical files for published videos to save space."""
+    videos = await db.get_all_videos()
+    freed_bytes = 0
+    import os
+    for v in videos:
+        if v["status"] == "published" or v["status"] == "failed":
+            for path_key in ["original_path", "processed_path"]:
+                path = v.get(path_key)
+                if path and os.path.exists(path):
+                    try:
+                        freed_bytes += os.path.getsize(path)
+                        os.remove(path)
+                        # We don't remove from DB, just empty the path so it shows as missing physical file
+                    except Exception:
+                        pass
+    
+    freed_mb = freed_bytes / (1024 * 1024)
+    return {"success": True, "message": f"Đã dọn dẹp giải phóng {freed_mb:.2f} MB dung lượng!"}
+
+@app.post("/api/settings/logo")
+async def api_upload_logo(file: UploadFile = File(...)):
+    import os
+    import shutil
+    if not file.filename.lower().endswith('.png'):
+        raise HTTPException(400, "Chỉ hỗ trợ file ảnh định dạng PNG")
+    
+    storage_dir = os.path.dirname(settings.DOWNLOAD_DIR)
+    os.makedirs(storage_dir, exist_ok=True)
+    logo_path = os.path.join(storage_dir, "logo.png")
+    with open(logo_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    return {"success": True, "message": "Đã cập nhật Logo PNG thành công!"}
 
 
 @app.post("/api/download/images")
@@ -303,6 +348,48 @@ async def api_video_info(request: Request):
 # API: VIDEO LIBRARY
 # ═══════════════════════════════════════════
 
+@app.post("/api/videos/upload")
+async def api_upload_video(file: UploadFile = File(...)):
+    """Upload a video directly to the library."""
+    import uuid
+    import os
+    import shutil
+    
+    if not file.filename.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
+        raise HTTPException(400, "Chỉ hỗ trợ file video (mp4, mov, avi, mkv)")
+        
+    video_id = uuid.uuid4().hex[:8]
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"{video_id}_uploaded{ext}"
+    
+    os.makedirs(settings.DOWNLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(settings.DOWNLOAD_DIR, filename)
+    
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        file_size = os.path.getsize(file_path)
+        
+        video_data = {
+            "id": video_id,
+            "source_url": "uploaded",
+            "source_platform": "local",
+            "title": file.filename,
+            "original_filename": filename,
+            "original_path": file_path,
+            "status": "downloaded",
+            "file_size": file_size,
+        }
+        
+        await db.create_video(video_data)
+        return {"success": True, "video_id": video_id, "message": "Tải lên thành công!"}
+    except Exception as e:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(500, f"Lỗi khi tải lên: {str(e)}")
+
+
 @app.get("/api/videos")
 async def api_list_videos(status: str = None, folder_id: str = None, limit: int = 200):
     """List all videos with status and folder filter."""
@@ -414,13 +501,38 @@ async def api_video_status(video_id: str):
     if not video:
         raise HTTPException(404, "Video not found")
     
-    from app.services.progress import video_progress
+    from app.services.progress import video_progress, video_logs
     return {
         "id": video_id,
         "status": video["status"],
         "error_message": video.get("error_message", ""),
         "progress": video_progress.get(video_id, 0),
+        "logs": video_logs.get(video_id, []),
     }
+
+@app.post("/api/process/{video_id}/cancel")
+async def api_cancel_process(video_id: str):
+    from app.services.progress import active_processes
+    if video_id in active_processes:
+        process = active_processes[video_id]
+        try:
+            process.kill()
+            del active_processes[video_id]
+            # Update DB status
+            await db.update_video(video_id, {
+                "status": "failed",
+                "error_message": "Người dùng đã hủy tiến trình."
+            })
+            return {"success": True, "message": "Đã hủy tiến trình thành công"}
+        except Exception as e:
+            raise HTTPException(500, f"Không thể hủy tiến trình: {str(e)}")
+    else:
+        # Not found in active processes, but might still be processing in queue
+        await db.update_video(video_id, {
+            "status": "failed",
+            "error_message": "Người dùng đã hủy tiến trình."
+        })
+        return {"success": True, "message": "Đã hủy tiến trình trong hàng đợi"}
 
 
 # ═══════════════════════════════════════════
@@ -587,12 +699,34 @@ async def api_list_fb_pages():
 
 @app.post("/api/fb/pages")
 async def api_add_fb_page(request: Request):
-    """Add a Facebook page with access token."""
+    """Add a Facebook page with access token or Telegram channel."""
     data = await request.json()
     access_token = data.get("access_token", "").strip()
 
     if not access_token:
         raise HTTPException(400, "Access token is required")
+
+    # Add Telegram Channel support
+    if access_token.startswith("tele:"):
+        chat_id = access_token.replace("tele:", "").strip()
+        page_data = {
+            "id": str(uuid.uuid4())[:8],
+            "page_id": access_token,
+            "page_name": f"Telegram: {chat_id}",
+            "access_token": "telegram_bot",
+            "category": "Telegram Channel",
+            "is_active": 1,
+        }
+        existing = await db.get_all_fb_pages()
+        for p in existing:
+            if p["page_id"] == access_token:
+                return {"success": True, "page": p, "message": "Telegram channel already exists"}
+        await db.create_fb_page(page_data)
+        return {
+            "success": True,
+            "page": page_data,
+            "message": f"Đã thêm Telegram Channel: {chat_id}"
+        }
 
     # Attempt to extend token if it's a user token or short-lived
     access_token = await FacebookAPI.extend_token(access_token)
@@ -601,6 +735,17 @@ async def api_add_fb_page(request: Request):
     page_info = await FacebookAPI.verify_token(access_token)
     if "error" in page_info:
         raise HTTPException(400, f"Token verification failed: {page_info['error']}")
+
+    existing_pages = await db.get_all_fb_pages()
+    for p in existing_pages:
+        if p["page_id"] == page_info["page_id"]:
+            await db.update_fb_page(p["id"], {
+                "access_token": access_token,
+                "page_name": page_info["page_name"],
+                "category": page_info.get("category", ""),
+                "is_active": 1
+            })
+            return {"success": True, "page": p, "message": f"Đã cập nhật Token mới cho Page '{page_info['page_name']}'"}
 
     # Save to DB
     page_data = {
@@ -637,23 +782,36 @@ async def api_import_pages_from_user(request: Request):
     if pages and "error" in pages[0]:
         raise HTTPException(400, pages[0]["error"])
 
+    existing_pages = await db.get_all_fb_pages()
+    existing_map = {p["page_id"]: p for p in existing_pages}
+
     saved = []
     for page in pages:
-        page_data = {
-            "id": str(uuid.uuid4())[:8],
-            "page_id": page["page_id"],
-            "page_name": page["page_name"],
-            "access_token": page["access_token"],
-            "category": page.get("category", ""),
-            "is_active": 1,
-        }
-        await db.create_fb_page(page_data)
-        saved.append(page_data)
+        if page["page_id"] in existing_map:
+            db_page = existing_map[page["page_id"]]
+            await db.update_fb_page(db_page["id"], {
+                "access_token": page["access_token"],
+                "page_name": page["page_name"],
+                "is_active": 1
+            })
+            saved.append(db_page)
+        else:
+            page_data = {
+                "id": str(uuid.uuid4())[:8],
+                "page_id": page["page_id"],
+                "page_name": page["page_name"],
+                "access_token": page["access_token"],
+                "category": page.get("category", ""),
+                "is_active": 1,
+            }
+            await db.create_fb_page(page_data)
+            saved.append(page_data)
 
     return {
         "success": True,
         "count": len(saved),
         "pages": saved,
+        "message": f"Đã quét và cập nhật {len(saved)} Fanpage!"
     }
 
 
@@ -1760,3 +1918,169 @@ async def api_reset_daily_limits():
         return {"message": "Đã reset giới hạn hàng ngày cho tất cả tài khoản"}
     finally:
         await adb.close()
+
+
+# ═══════════════════════════════════════════
+# API: CAMPAIGNS (AUTO PILOT)
+# ═══════════════════════════════════════════
+
+@app.get("/api/campaigns")
+async def api_get_campaigns():
+    campaigns = await db.get_all_campaigns()
+    return {"campaigns": campaigns}
+
+@app.post("/api/campaigns")
+async def api_create_campaign(request: Request):
+    import uuid
+    import json
+    data = await request.json()
+    campaign_id = str(uuid.uuid4())[:8]
+    data['id'] = campaign_id
+    if 'processing_options' in data and not isinstance(data['processing_options'], str):
+        data['processing_options'] = json.dumps(data['processing_options'])
+    
+    await db.create_campaign(data)
+    return {"success": True, "id": campaign_id}
+
+@app.delete("/api/campaigns/{campaign_id}")
+async def api_delete_campaign(campaign_id: str):
+    await db.delete_campaign(campaign_id)
+    return {"success": True}
+
+@app.post("/api/campaigns/{campaign_id}/toggle")
+async def api_toggle_campaign(campaign_id: str):
+    campaign = await db.get_campaign(campaign_id)
+    if campaign:
+        new_status = 0 if campaign['is_active'] else 1
+        await db.update_campaign(campaign_id, {'is_active': new_status})
+    return {"success": True}
+
+
+# ═══════════════════════════════════════════
+# API: VIETSUB & LỒNG TIẾNG (THE HOLY GRAIL)
+# ═══════════════════════════════════════════
+
+@app.post("/api/vietsub/{video_id}")
+async def api_vietsub_video(video_id: str, request: Request):
+    """
+    Run full Vietsub + Lồng Tiếng pipeline on a video.
+    Body JSON options:
+      - source_lang: null (auto-detect) or "zh", "en", "ja", "ko"
+      - target_lang: "vi" (default)
+      - voice_id: "vi-female" (default) or "vi-male"
+      - voice_rate: "+0%" (default)
+      - include_voiceover: true (default) - Lồng tiếng
+      - include_subtitles: true (default) - Burn phụ đề
+      - include_original_sub: false - Hiện thêm phụ đề gốc
+      - original_volume: 0.15 (default) - Âm lượng audio gốc (0.0-1.0)
+      - sub_style: "default" | "modern" | "cinematic" | "tiktok"
+    """
+    video = await db.get_video(video_id)
+    if not video:
+        raise HTTPException(404, "Video not found")
+
+    video_path = video.get("original_path")
+    if not video_path or not os.path.exists(video_path):
+        raise HTTPException(404, "Video file not found on disk")
+
+    data = await request.json()
+
+    # Update status
+    await db.update_video(video_id, {"status": "processing"})
+
+    try:
+        from app.services.vietsub_service import full_vietsub_pipeline
+
+        result = await full_vietsub_pipeline(
+            video_path=video_path,
+            source_lang=data.get("source_lang"),
+            target_lang=data.get("target_lang", "vi"),
+            voice_id=data.get("voice_id", "vi-female"),
+            voice_rate=data.get("voice_rate", "+0%"),
+            include_voiceover=data.get("include_voiceover", True),
+            include_subtitles=data.get("include_subtitles", True),
+            include_original_sub=data.get("include_original_sub", False),
+            original_volume=float(data.get("original_volume", 0.15)),
+            sub_style=data.get("sub_style", "default"),
+        )
+
+        if "error" in result:
+            await db.update_video(video_id, {
+                "status": "failed",
+                "error_message": result["error"]
+            })
+            return {"success": False, **result}
+
+        # Update video with processed path
+        await db.update_video(video_id, {
+            "status": "processed",
+            "processed_path": result["output_path"],
+        })
+
+        return {
+            "success": True,
+            "video_id": video_id,
+            "output_path": result["output_path"],
+            "srt_path": result.get("srt_path"),
+            "source_lang": result.get("source_lang"),
+            "segment_count": result.get("segment_count"),
+            "steps": result.get("steps"),
+            "file_size": result.get("file_size"),
+        }
+
+    except Exception as e:
+        logger.error(f"Vietsub API error: {e}")
+        await db.update_video(video_id, {
+            "status": "failed",
+            "error_message": str(e)
+        })
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/vietsub/transcribe/{video_id}")
+async def api_transcribe_only(video_id: str, request: Request):
+    """Only transcribe a video (Step 1+2), return segments without rendering."""
+    video = await db.get_video(video_id)
+    if not video:
+        raise HTTPException(404, "Video not found")
+
+    video_path = video.get("original_path")
+    if not video_path or not os.path.exists(video_path):
+        raise HTTPException(404, "Video file not found")
+
+    data = await request.json()
+
+    from app.services.vietsub_service import extract_audio, transcribe_audio
+
+    audio_result = await extract_audio(video_path)
+    if "error" in audio_result:
+        return {"success": False, "error": audio_result["error"]}
+
+    transcribe_result = await transcribe_audio(
+        audio_result["audio_path"],
+        language=data.get("source_lang")
+    )
+
+    # Cleanup temp audio
+    try:
+        os.remove(audio_result["audio_path"])
+    except:
+        pass
+
+    if "error" in transcribe_result:
+        return {"success": False, "error": transcribe_result["error"]}
+
+    return {
+        "success": True,
+        "language": transcribe_result["language"],
+        "segments": transcribe_result["segments"],
+        "full_text": transcribe_result["full_text"],
+    }
+
+
+@app.get("/api/vietsub/voices")
+async def api_vietsub_voices():
+    """List available TTS voices for voiceover."""
+    from app.services.tts_service import VOICE_LIST
+    return {"voices": VOICE_LIST}
+

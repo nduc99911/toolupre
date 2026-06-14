@@ -1,0 +1,17 @@
+{
+  "name": "douyin-downloader",
+  "version": "1.0.0",
+  "description": "Douyin Video Downloader - Tải video Douyin không watermark",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "node-fetch": "^2.7.0",
+    "playwright": "^1.60.0",
+    "puppeteer": "^25.1.0",
+    "puppeteer-core": "^25.1.0"
+  }
+}
