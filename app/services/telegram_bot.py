@@ -86,7 +86,8 @@ async def menu_pages(callback: CallbackQuery):
         text += "❌ Chưa có Fanpage hoặc Kênh nào được liên kết.\n\n"
     else:
         for i, p in enumerate(pages, 1):
-            text += f"{i}. **{p['page_name']}** ({p.get('category', 'Page')})\n"
+            name_escaped = p['page_name'].replace('_', '\\_').replace('*', '\\*')
+            text += f"{i}. **{name_escaped}** ({p.get('category', 'Page')})\n"
         text += "\n"
     
     text += "💡 **Cách liên kết thêm trực tiếp:**\n"
@@ -773,7 +774,7 @@ async def handle_vietsub(callback: CallbackQuery, state: FSMContext):
             f"✅ **Vietsub + Lồng tiếng hoàn tất!**\n\n"
             f"🌍 Ngôn ngữ gốc: **{lang}**\n"
             f"📝 Số câu phụ đề: **{segs}**\n"
-            f"📁 File: {os.path.basename(output_path)}\n\n"
+            f"📁 File: {os.path.basename(output_path).replace('_', '\\_')}\n\n"
             f"⏳ Đang gửi video...",
             parse_mode="Markdown"
         )

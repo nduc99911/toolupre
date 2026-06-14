@@ -611,7 +611,6 @@ class VideoProcessor:
             if options.get("vietsub_dubbing", False):
                 logger.info(f"Vietsub pipeline triggered for {video_id}")
                 from app.services.vietsub_service import full_vietsub_pipeline
-                from app.services.progress import video_progress, video_logs
                 
                 video_logs[video_id] = []
                 video_progress[video_id] = 0.0
@@ -668,7 +667,6 @@ class VideoProcessor:
             if options.get("vietsub_only", False):
                 logger.info(f"Vietsub-only (sub only) pipeline triggered for {video_id}")
                 from app.services.vietsub_service import full_vietsub_pipeline
-                from app.services.progress import video_progress, video_logs
 
                 if video_id not in video_logs:
                     video_logs[video_id] = []
