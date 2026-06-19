@@ -360,6 +360,20 @@ async def delete_fb_page(page_id: str) -> bool:
         await db.close()
 
 
+async def update_fb_page(page_db_id: str, data: dict) -> bool:
+    db = await get_db()
+    try:
+        sets = ", ".join([f"{k} = ?" for k in data.keys()])
+        await db.execute(
+            f"UPDATE fb_pages SET {sets} WHERE id = ?",
+            list(data.values()) + [page_db_id]
+        )
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+
 # ─── Scheduled Posts CRUD ───
 
 async def create_scheduled_post(post_data: dict) -> dict:
