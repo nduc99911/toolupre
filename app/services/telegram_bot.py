@@ -382,6 +382,9 @@ async def handle_uploaded_document(message: Message, state: FSMContext):
 async def handle_url(message: Message, state: FSMContext):
     url = message.text.strip()
     
+    from app.services.downloader import resolve_xhs_url
+    url = await resolve_xhs_url(url)
+    
     # Save URL to session
     user_sessions[message.from_user.id] = {
         "url": url,
@@ -390,7 +393,7 @@ async def handle_url(message: Message, state: FSMContext):
     
     # Check if it's a profile URL
     is_douyin_profile = "douyin.com/user/" in url
-    is_rednote_profile = "rednote.com/user/" in url or "xiaohongshu.com/user/" in url
+    is_rednote_profile = "rednote.com/user/" in url or "xiaohongshu.com/user/" in url or "xiaohongshu.com/user/profile/" in url
     
     if is_rednote_profile:
         await message.answer("⚠️ Bot hiện chưa hỗ trợ quét nguyên Profile RedNote. Vui lòng sử dụng Crawler trên máy tính hoặc gửi từng link bài viết riêng lẻ.")

@@ -37,12 +37,42 @@ def detect_platform(url: str) -> str:
         return "facebook"
     elif "instagram.com" in url_lower:
         return "instagram"
+    elif "xiaohongshu.com" in url_lower or "rednote.com" in url_lower or "xhslink.com" in url_lower:
+        return "rednote"
     elif "youtube.com" in url_lower or "youtu.be" in url_lower:
         return "youtube"
     elif "x.com" in url_lower or "twitter.com" in url_lower:
         return "twitter"
     else:
         return "other"
+
+
+async def resolve_xhs_url(url: str) -> str:
+    """Resolve a short xhslink.com URL to its actual target URL."""
+    if "xhslink.com" not in url.lower():
+        return url
+    import httpx
+    from urllib.parse import urlparse, parse_qs, unquote
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+    try:
+        logger.info(f"Resolving short RedNote link: {url}")
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            final_url = str(resp.url)
+            parsed = urlparse(final_url)
+            qs = parse_qs(parsed.query)
+            if "redirectPath" in qs:
+                resolved = unquote(qs["redirectPath"][0])
+                logger.info(f"Resolved xhslink redirectPath: {resolved}")
+                return resolved
+            logger.info(f"Resolved xhslink directly to: {final_url}")
+            return final_url
+    except Exception as e:
+        logger.error(f"Error resolving xhslink URL {url}: {e}")
+        return url
+
 
 
 def get_ffmpeg_path() -> str:
@@ -116,6 +146,7 @@ async def _run_command_async(cmd: list[str], timeout: int = 120) -> tuple[int, s
 
 async def get_video_info(url: str) -> dict:
     """Get video metadata without downloading."""
+    url = await resolve_xhs_url(url)
     cmd = [
         "yt-dlp",
         "--dump-json",
@@ -530,6 +561,7 @@ async def download_video(url: str, video_id: str = None,
     if not video_id:
         video_id = str(uuid.uuid4())[:8]
 
+    url = await resolve_xhs_url(url)
     platform = detect_platform(url)
     output_dir = settings.DOWNLOAD_DIR
     os.makedirs(output_dir, exist_ok=True)

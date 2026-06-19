@@ -16,6 +16,161 @@ import os
 logger = logging.getLogger("reupmaster.scheduler")
 
 
+async def get_tiktok_profile_videos(url: str, limit: int = 5) -> list[dict]:
+    import json
+    from app.services.downloader import _run_command_async
+    
+    cmd = [
+        "yt-dlp",
+        "--flat-playlist",
+        "--playlist-end", str(limit),
+        "--dump-json",
+        "--no-warnings",
+        url
+    ]
+    try:
+        returncode, stdout, stderr = await _run_command_async(cmd, timeout=60)
+        if returncode != 0:
+            logger.error(f"Failed to fetch TikTok profile via yt-dlp: {stderr}")
+            return []
+            
+        videos = []
+        for line in stdout.split("\n"):
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+                video_id = item.get("id")
+                if video_id:
+                    uploader = item.get("uploader") or item.get("uploader_id") or "user"
+                    if not uploader.startswith("@"):
+                        uploader = f"@{uploader}"
+                    videos.append({
+                        "url": f"https://www.tiktok.com/{uploader}/video/{video_id}",
+                        "title": item.get("title", "") or item.get("description", ""),
+                    })
+            except Exception as e:
+                logger.error(f"Error parsing TikTok profile JSON line: {e}")
+        return videos
+    except Exception as e:
+        logger.error(f"Error scanning TikTok profile: {e}")
+        return []
+
+
+async def get_rednote_profile_posts(url: str, limit: int = 5) -> list[dict]:
+    import httpx
+    import re
+    import json
+    import os
+    from app.services.downloader import resolve_xhs_url
+    
+    url = await resolve_xhs_url(url)
+    
+    if "rednote.com" in url:
+        url = url.replace("rednote.com", "xiaohongshu.com")
+        
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
+    
+    cookies = {}
+    cookie_path = "rednote_cookie.txt"
+    if os.path.exists(cookie_path):
+        try:
+            with open(cookie_path, "r", encoding="utf-8") as f:
+                cookie_data = json.load(f)
+            cookies = {c["name"]: c["value"] for c in cookie_data}
+            logger.info(f"Loaded {len(cookies)} cookies for RedNote profile scan.")
+        except Exception as e:
+            logger.error(f"Failed to load RedNote cookies: {e}")
+            
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers, cookies=cookies)
+            if resp.status_code != 200:
+                logger.error(f"Failed to fetch RedNote profile: HTTP {resp.status_code}")
+                return []
+                
+            state_match = re.search(r'window\.__INITIAL_STATE__=({.*?})</script>', resp.text)
+            if not state_match:
+                logger.warning("RedNote INITIAL_STATE not found in HTML response.")
+                return []
+                
+            state_str = state_match.group(1).replace("undefined", "null")
+            state = json.loads(state_str)
+            
+            user = state.get("user", {})
+            logged_in = user.get("loggedIn", False)
+            if not logged_in:
+                logger.warning("RedNote: Session in rednote_cookie.txt is not logged in or guest. Notes list may not have note IDs. Please update rednote_cookie.txt with active logged-in cookies.")
+            
+            notes_lists = user.get("notes", [])
+            
+            posts = []
+            for group in notes_lists:
+                if not isinstance(group, list):
+                    continue
+                for note_item in group:
+                    if len(posts) >= limit:
+                        break
+                    card = note_item.get("noteCard", {})
+                    note_id = note_item.get("id") or card.get("noteId")
+                    token = note_item.get("xsecToken") or card.get("xsecToken")
+                    
+                    if not note_id:
+                        continue
+                        
+                    post_url = f"https://www.xiaohongshu.com/explore/{note_id}"
+                    if token:
+                        post_url += f"?xsec_token={token}&xsec_source=pc_feed"
+                        
+                    posts.append({
+                        "url": post_url,
+                        "title": card.get("displayTitle", "") or card.get("title", ""),
+                    })
+            return posts
+    except Exception as e:
+        logger.error(f"Error scanning RedNote profile: {e}")
+        return []
+
+
+async def scan_profile_videos(url: str, limit: int = 5) -> list[dict]:
+    from app.services.downloader import detect_platform, resolve_xhs_url
+    url = await resolve_xhs_url(url)
+    platform = detect_platform(url)
+    
+    if platform == "douyin":
+        from app.services.douyin_service import fetch_profile_videos
+        try:
+            profile_data = await fetch_profile_videos(url, max_count=limit)
+            if not profile_data or "error" in profile_data:
+                logger.error(f"Douyin profile fetch error: {profile_data.get('error') if profile_data else 'None'}")
+                return []
+                
+            videos = []
+            for v in profile_data.get("videos", []):
+                videos.append({
+                    "url": f"https://www.douyin.com/video/{v['id']}",
+                    "title": v.get("desc", ""),
+                })
+            return videos
+        except Exception as e:
+            logger.error(f"Error scanning Douyin profile: {e}")
+            return []
+            
+    elif platform == "tiktok":
+        return await get_tiktok_profile_videos(url, limit)
+        
+    elif platform == "rednote":
+        return await get_rednote_profile_posts(url, limit)
+        
+    else:
+        logger.warning(f"Unsupported profile platform for url: {url}")
+        return []
+
+
 class PostScheduler:
     """Scheduler for automatic post publishing."""
 
@@ -232,8 +387,8 @@ class PostScheduler:
         from datetime import datetime, timedelta
         import uuid
         import json
-        from app.services.douyin_api import DouyinAPI
         import asyncio
+        from app.services.downloader import detect_platform
         
         try:
             campaigns = await db.get_active_campaigns()
@@ -243,12 +398,12 @@ class PostScheduler:
                 if int(camp.get('scan_hour', 0)) != current_hour:
                     continue
                     
-                logger.info(f"Running auto campaign: {camp['name']}")
+                logger.info(f"Running auto campaign: {camp['name']} (Target: {camp['target_url']})")
                 
                 try:
-                    videos = await DouyinAPI.get_profile_videos(camp['target_url'], limit=5)
+                    videos = await scan_profile_videos(camp['target_url'], limit=5)
                 except Exception as e:
-                    logger.error(f"Failed to fetch douyin profile for campaign {camp['name']}: {e}")
+                    logger.error(f"Failed to fetch profile videos for campaign {camp['name']}: {e}")
                     continue
                 
                 if not videos:
@@ -263,12 +418,13 @@ class PostScheduler:
                         
                     logger.info(f"New video found for campaign {camp['name']}: {v['url']}")
                     
+                    platform = detect_platform(v['url'])
                     video_id = str(uuid.uuid4())[:8]
                     await db.create_video({
                         "id": video_id,
                         "source_url": v['url'],
-                        "source_platform": "douyin",
-                        "title": v.get('desc', ''),
+                        "source_platform": platform,
+                        "title": v.get('title') or v.get('desc') or '',
                         "status": "pending",
                         "processing_options": camp.get('processing_options', '{}')
                     })

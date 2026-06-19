@@ -1455,8 +1455,8 @@
                     <input type="text" class="form-input" id="camp-name" placeholder="Ví dụ: Kênh Gái Xinh">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Link Profile Douyin (Mục tiêu)</label>
-                    <input type="text" class="form-input" id="camp-target" placeholder="https://v.douyin.com/...">
+                    <label class="form-label">Link Profile Mục tiêu (Douyin / TikTok / RedNote)</label>
+                    <input type="text" class="form-input" id="camp-target" placeholder="Ví dụ: https://v.douyin.com/... hoặc link TikTok, RedNote">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Đăng lên Fanpage (ID)</label>
@@ -1591,11 +1591,26 @@
                         card.style.opacity = '0.6';
                     }
                     
+                    // Detect platform
+                    let platform = 'Douyin';
+                    let platformColor = '#ff0050'; // Douyin pink/red
+                    const urlLower = camp.target_url.toLowerCase();
+                    if (urlLower.includes('tiktok.com')) {
+                        platform = 'TikTok';
+                        platformColor = '#00f2fe'; // TikTok cyan/blue
+                    } else if (urlLower.includes('xiaohongshu.com') || urlLower.includes('rednote.com')) {
+                        platform = 'RedNote';
+                        platformColor = '#ff2442'; // RedNote red
+                    }
+                    
                     card.innerHTML = `
                         <div class="card-body">
-                            <h3 style="margin-top:0;">${camp.name}</h3>
-                            <p style="font-size:12px; word-break:break-all;">🎯 ${camp.target_url}</p>
-                            <p style="font-size:12px;">📘 Đăng lên: ${camp.page_id || 'Chưa chọn'}</p>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <h3 style="margin:0;">${camp.name}</h3>
+                                <span class="badge" style="background:${platformColor}; color:#fff; font-weight:bold; font-size:10px; padding:2px 6px; border-radius:4px;">${platform}</span>
+                            </div>
+                            <p style="font-size:12px; word-break:break-all; margin: 5px 0;">🎯 ${camp.target_url}</p>
+                            <p style="font-size:12px; margin: 5px 0;">📘 Đăng lên: ${camp.page_id || 'Chưa chọn'}</p>
                             <div style="display:flex; gap:10px; margin-top:10px;">
                                 <span class="badge">Quét: ${camp.scan_hour}h</span>
                                 <span class="badge">Đăng: ${camp.post_hour}h</span>
