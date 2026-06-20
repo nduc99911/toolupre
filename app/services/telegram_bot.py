@@ -39,6 +39,15 @@ def _is_admin(user_id: int) -> bool:
     return user_id in allowed_ids
 
 
+async def _is_guest_allowed() -> bool:
+    """Check if guest access is globally enabled in DB settings."""
+    try:
+        val = await db.get_setting("guest_access_enabled", "true")
+        return val == "true"
+    except Exception:
+        return True
+
+
 # ═══════════════════════════════════════════
 # /start - Main Menu
 # ═══════════════════════════════════════════
@@ -48,12 +57,18 @@ async def cmd_start(message: Message):
 
     if _is_admin(user_id):
         # Admin: Full menu
+        guest_allowed = await _is_guest_allowed()
+        guest_text = "🟢 Khách dùng bot: BẬT" if guest_allowed else "🔴 Khách dùng bot: TẮT"
+        
         keyboard = [
             [InlineKeyboardButton(text="🎬 Tải & Reup Video/Ảnh", callback_data="menu_reup")],
             [InlineKeyboardButton(text="📚 Thư viện media", callback_data="menu_library")],
             [InlineKeyboardButton(text="📄 Danh sách Fanpage", callback_data="menu_pages")],
-            [InlineKeyboardButton(text="📊 Thống kê hệ thống", callback_data="menu_stats")],
-            [InlineKeyboardButton(text="❓ Hướng dẫn sử dụng", callback_data="menu_help")],
+            [InlineKeyboardButton(text=guest_text, callback_data="admin_toggle_guest")],
+            [
+                InlineKeyboardButton(text="📊 Thống kê", callback_data="menu_stats"),
+                InlineKeyboardButton(text="❓ Hướng dẫn", callback_data="menu_help")
+            ],
         ]
         markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
         await message.answer(
@@ -62,6 +77,11 @@ async def cmd_start(message: Message):
             reply_markup=markup, parse_mode="Markdown"
         )
     else:
+        # Check if guest access is disabled
+        if not await _is_guest_allowed():
+            await message.answer("⚠️ **Bot đang bảo trì.**\n\nHiện tại tính năng cho người dùng thông thường tạm đóng. Vui lòng quay lại sau!")
+            return
+            
         # Guest: Simple Reup and Help menu
         keyboard = [
             [InlineKeyboardButton(text="🎬 Tải & Reup Video/Ảnh", callback_data="menu_reup")],
@@ -90,6 +110,36 @@ async def menu_reup(callback: CallbackQuery):
         "Tôi sẽ tự động tải → Hỏi bạn chọn tính năng reup → Xử lý → Đăng lên Fanpage!",
         parse_mode="Markdown"
     )
+
+
+@dp.callback_query(F.data == "admin_toggle_guest")
+async def handle_toggle_guest(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if not _is_admin(user_id):
+        await callback.answer("⚠️ Tính năng này chỉ dành cho Admin.", show_alert=True)
+        return
+        
+    current = await _is_guest_allowed()
+    new_val = "false" if current else "true"
+    await db.set_setting("guest_access_enabled", new_val)
+    
+    # Update current message keyboard
+    guest_text = "🟢 Khách dùng bot: BẬT" if new_val == "true" else "🔴 Khách dùng bot: TẮT"
+    
+    keyboard = [
+        [InlineKeyboardButton(text="🎬 Tải & Reup Video/Ảnh", callback_data="menu_reup")],
+        [InlineKeyboardButton(text="📚 Thư viện media", callback_data="menu_library")],
+        [InlineKeyboardButton(text="📄 Danh sách Fanpage", callback_data="menu_pages")],
+        [InlineKeyboardButton(text=guest_text, callback_data="admin_toggle_guest")],
+        [
+            InlineKeyboardButton(text="📊 Thống kê", callback_data="menu_stats"),
+            InlineKeyboardButton(text="❓ Hướng dẫn", callback_data="menu_help")
+        ],
+    ]
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await callback.message.edit_reply_markup(reply_markup=markup)
+    await callback.answer(f"Đã {'BẬT' if new_val == 'true' else 'TẮT'} quyền truy cập của khách!")
+
 
 @dp.callback_query(F.data == "menu_library")
 async def menu_library(callback: CallbackQuery):
@@ -448,6 +498,9 @@ async def handle_url(message: Message, state: FSMContext):
         return
 
     is_admin = _is_admin(message.from_user.id)
+    if not is_admin and not await _is_guest_allowed():
+        await message.answer("⚠️ **Bot đang bảo trì.**\n\nHiện tại tính năng cho người dùng thông thường tạm đóng. Vui lòng quay lại sau!")
+        return
 
     keyboard = []
     if is_douyin_profile:
