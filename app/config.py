@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     # Telegram Bot
     TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_ALLOWED_USERS: str = ""
 
     # FFmpeg
     FFMPEG_PATH: str = ""

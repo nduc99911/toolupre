@@ -2,8 +2,8 @@ import asyncio
 import os
 import json
 import logging
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import Bot, Dispatcher, F, BaseMiddleware
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, TelegramObject
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -23,6 +23,46 @@ class PublishFlow(StatesGroup):
 bot = Bot(token=settings.TELEGRAM_BOT_TOKEN) if settings.TELEGRAM_BOT_TOKEN else None
 dp = Dispatcher()
 user_sessions = {}
+
+
+class AuthMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler,
+        event: TelegramObject,
+        data: dict
+    ):
+        user = data.get("event_from_user")
+        if not user:
+            return await handler(event, data)
+
+        allowed_users = settings.TELEGRAM_ALLOWED_USERS
+        if allowed_users:
+            try:
+                allowed_ids = [int(x.strip()) for x in allowed_users.split(",") if x.strip()]
+            except Exception:
+                allowed_ids = []
+
+            if allowed_ids and user.id not in allowed_ids:
+                if isinstance(event, Message):
+                    await event.answer(
+                        f"⚠️ **Bạn không có quyền sử dụng Bot này.**\n\n"
+                        f"🆔 ID Telegram của bạn: `{user.id}`\n"
+                        f"Vui lòng copy ID này và thêm vào cấu hình `TELEGRAM_ALLOWED_USERS` trong file `.env` trên VPS để kích hoạt.",
+                        parse_mode="Markdown"
+                    )
+                elif isinstance(event, CallbackQuery):
+                    await event.answer(
+                        f"⚠️ Bạn không có quyền sử dụng Bot này. ID: {user.id}",
+                        show_alert=True
+                    )
+                return
+
+        return await handler(event, data)
+
+# Register Middleware
+dp.message.outer_middleware(AuthMiddleware())
+dp.callback_query.outer_middleware(AuthMiddleware())
 
 
 # ═══════════════════════════════════════════
@@ -382,9 +422,6 @@ async def handle_uploaded_document(message: Message, state: FSMContext):
 async def handle_url(message: Message, state: FSMContext):
     url = message.text.strip()
     
-    from app.services.downloader import resolve_xhs_url
-    url = await resolve_xhs_url(url)
-    
     # Save URL to session
     user_sessions[message.from_user.id] = {
         "url": url,
@@ -393,7 +430,7 @@ async def handle_url(message: Message, state: FSMContext):
     
     # Check if it's a profile URL
     is_douyin_profile = "douyin.com/user/" in url
-    is_rednote_profile = "rednote.com/user/" in url or "xiaohongshu.com/user/" in url or "xiaohongshu.com/user/profile/" in url
+    is_rednote_profile = "rednote.com/user/" in url or "xiaohongshu.com/user/" in url
     
     if is_rednote_profile:
         await message.answer("⚠️ Bot hiện chưa hỗ trợ quét nguyên Profile RedNote. Vui lòng sử dụng Crawler trên máy tính hoặc gửi từng link bài viết riêng lẻ.")
