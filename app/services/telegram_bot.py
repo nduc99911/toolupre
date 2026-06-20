@@ -62,12 +62,16 @@ async def cmd_start(message: Message):
             reply_markup=markup, parse_mode="Markdown"
         )
     else:
-        # Guest: Download-only mode
+        # Guest: Simple Reup and Help menu
+        keyboard = [
+            [InlineKeyboardButton(text="🎬 Tải & Reup Video/Ảnh", callback_data="menu_reup")],
+            [InlineKeyboardButton(text="❓ Hướng dẫn sử dụng", callback_data="menu_help")],
+        ]
+        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
         await message.answer(
-            "👋 **Chào bạn!**\n\n"
-            "🎬 Gửi cho tôi link video từ TikTok, Douyin, RedNote, Facebook...\n"
-            "Tôi sẽ tự động tải về và gửi lại cho bạn ngay!",
-            parse_mode="Markdown"
+            "👋 **Chào bạn đến với ReupMaster Pro Bot!**\n\n"
+            "Chọn tính năng bạn muốn sử dụng bên dưới hoặc gửi trực tiếp đường link video/ảnh để bắt đầu tải & lách bản quyền:",
+            reply_markup=markup, parse_mode="Markdown"
         )
 
 
@@ -445,20 +449,14 @@ async def handle_url(message: Message, state: FSMContext):
 
     is_admin = _is_admin(message.from_user.id)
 
-    if not is_admin:
-        # Guest: Only download video option
-        keyboard = [
-            [InlineKeyboardButton(text="🎬 Tải Video", callback_data="dl_video_guest")],
-        ]
-        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-        await message.answer("📎 Đã nhận link!\n\nBấm nút bên dưới để tải video:", reply_markup=markup)
-        return
-
-    # Admin: Full options
     keyboard = []
     if is_douyin_profile:
-        keyboard.append([InlineKeyboardButton(text="🕵️ Quét Profile Douyin", callback_data="dl_profile_douyin")])
-        msg_text = "📎 Đã nhận link Profile!\n\nBạn muốn quét toàn bộ video từ kênh này?"
+        if is_admin:
+            keyboard.append([InlineKeyboardButton(text="🕵️ Quét Profile Douyin", callback_data="dl_profile_douyin")])
+            msg_text = "📎 Đã nhận link Profile!\n\nBạn muốn quét toàn bộ video từ kênh này?"
+        else:
+            await message.answer("⚠️ Tính năng quét Profile chỉ dành cho Admin. Vui lòng gửi link bài viết/video đơn lẻ.")
+            return
     else:
         keyboard.extend([
             [InlineKeyboardButton(text="🎬 Tải Video", callback_data="dl_video")],
@@ -828,6 +826,21 @@ async def handle_vietsub_only(callback: CallbackQuery, state: FSMContext):
                 caption=f"📝 Video đã Vietsub (chỉ phụ đề)\n🌍 {lang} → vi | {segs} câu"
             )
 
+        # For guest, cleanup files to save VPS space
+        if not _is_admin(user_id):
+            try:
+                if output_path and os.path.exists(output_path):
+                    os.remove(output_path)
+                orig_path = video.get("original_path")
+                if orig_path and os.path.exists(orig_path):
+                    os.remove(orig_path)
+                await db.delete_video(video_id)
+            except Exception as e:
+                logger.warning(f"Failed to cleanup guest vietsub-only files: {e}")
+                
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+
     except Exception as e:
         logger.error(f"Telegram vietsub-only error: {e}")
         await callback.message.edit_text(f"❌ Lỗi hệ thống: {e}")
@@ -920,6 +933,25 @@ async def handle_vietsub(callback: CallbackQuery, state: FSMContext):
             )
 
         # Now ask about publishing
+        is_admin = _is_admin(user_id)
+        if not is_admin:
+            await bot.send_message(user_id, "✅ Hoàn tất quá trình Vietsub & lồng tiếng của bạn!")
+            
+            # Cleanup files to save VPS space
+            try:
+                if output_path and os.path.exists(output_path):
+                    os.remove(output_path)
+                orig_path = video.get("original_path")
+                if orig_path and os.path.exists(orig_path):
+                    os.remove(orig_path)
+                await db.delete_video(video_id)
+            except Exception as e:
+                logger.warning(f"Failed to cleanup guest vietsub files: {e}")
+                
+            if user_id in user_sessions:
+                del user_sessions[user_id]
+            return
+
         pages = await db.get_all_fb_pages()
         keyboard = []
         for p in pages:
@@ -1013,6 +1045,36 @@ async def handle_start_process(callback: CallbackQuery, state: FSMContext):
         logger.warning(f"Failed to send media to Telegram: {e}")
 
     # Ask: publish or done?
+    is_admin = _is_admin(callback.from_user.id)
+    if not is_admin:
+        await bot.send_message(callback.from_user.id, "✅ Hoàn tất quá trình xử lý video lách bản quyền của bạn!")
+        
+        # Cleanup files to save VPS space
+        try:
+            if is_image and os.path.isdir(video_path):
+                import shutil
+                shutil.rmtree(video_path)
+            elif os.path.isfile(video_path):
+                os.remove(video_path)
+            
+            # Also remove original path if it exists and is different
+            orig_path = video.get("original_path")
+            if orig_path and os.path.exists(orig_path) and orig_path != video_path:
+                if os.path.isdir(orig_path):
+                    import shutil
+                    shutil.rmtree(orig_path)
+                elif os.path.isfile(orig_path):
+                    os.remove(orig_path)
+                    
+            await db.delete_video(video_id)
+        except Exception as e:
+            logger.warning(f"Failed to cleanup guest files: {e}")
+            
+        # Clean session
+        if callback.from_user.id in user_sessions:
+            del user_sessions[callback.from_user.id]
+        return
+
     pages = await db.get_all_fb_pages()
     keyboard = []
     for p in pages:
