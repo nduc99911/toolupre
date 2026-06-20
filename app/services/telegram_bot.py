@@ -25,44 +25,18 @@ dp = Dispatcher()
 user_sessions = {}
 
 
-class AuthMiddleware(BaseMiddleware):
-    async def __call__(
-        self,
-        handler,
-        event: TelegramObject,
-        data: dict
-    ):
-        user = data.get("event_from_user")
-        if not user:
-            return await handler(event, data)
-
-        allowed_users = settings.TELEGRAM_ALLOWED_USERS
-        if allowed_users:
-            try:
-                allowed_ids = [int(x.strip()) for x in allowed_users.split(",") if x.strip()]
-            except Exception:
-                allowed_ids = []
-
-            if allowed_ids and user.id not in allowed_ids:
-                if isinstance(event, Message):
-                    await event.answer(
-                        f"⚠️ **Bạn không có quyền sử dụng Bot này.**\n\n"
-                        f"🆔 ID Telegram của bạn: `{user.id}`\n"
-                        f"Vui lòng copy ID này và thêm vào cấu hình `TELEGRAM_ALLOWED_USERS` trong file `.env` trên VPS để kích hoạt.",
-                        parse_mode="Markdown"
-                    )
-                elif isinstance(event, CallbackQuery):
-                    await event.answer(
-                        f"⚠️ Bạn không có quyền sử dụng Bot này. ID: {user.id}",
-                        show_alert=True
-                    )
-                return
-
-        return await handler(event, data)
-
-# Register Middleware
-dp.message.outer_middleware(AuthMiddleware())
-dp.callback_query.outer_middleware(AuthMiddleware())
+def _is_admin(user_id: int) -> bool:
+    """Check if a Telegram user ID is in the admin whitelist.
+    If TELEGRAM_ALLOWED_USERS is empty, everyone is admin (backward compatible).
+    """
+    allowed_users = settings.TELEGRAM_ALLOWED_USERS
+    if not allowed_users:
+        return True  # No whitelist configured = everyone is admin
+    try:
+        allowed_ids = [int(x.strip()) for x in allowed_users.split(",") if x.strip()]
+    except Exception:
+        return True
+    return user_id in allowed_ids
 
 
 # ═══════════════════════════════════════════
@@ -70,19 +44,31 @@ dp.callback_query.outer_middleware(AuthMiddleware())
 # ═══════════════════════════════════════════
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    keyboard = [
-        [InlineKeyboardButton(text="🎬 Tải & Reup Video/Ảnh", callback_data="menu_reup")],
-        [InlineKeyboardButton(text="📚 Thư viện media", callback_data="menu_library")],
-        [InlineKeyboardButton(text="📄 Danh sách Fanpage", callback_data="menu_pages")],
-        [InlineKeyboardButton(text="📊 Thống kê hệ thống", callback_data="menu_stats")],
-        [InlineKeyboardButton(text="❓ Hướng dẫn sử dụng", callback_data="menu_help")],
-    ]
-    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await message.answer(
-        "👋 **ReupMaster Pro Bot**\n\n"
-        "Chọn tính năng bạn muốn sử dụng:",
-        reply_markup=markup, parse_mode="Markdown"
-    )
+    user_id = message.from_user.id
+
+    if _is_admin(user_id):
+        # Admin: Full menu
+        keyboard = [
+            [InlineKeyboardButton(text="🎬 Tải & Reup Video/Ảnh", callback_data="menu_reup")],
+            [InlineKeyboardButton(text="📚 Thư viện media", callback_data="menu_library")],
+            [InlineKeyboardButton(text="📄 Danh sách Fanpage", callback_data="menu_pages")],
+            [InlineKeyboardButton(text="📊 Thống kê hệ thống", callback_data="menu_stats")],
+            [InlineKeyboardButton(text="❓ Hướng dẫn sử dụng", callback_data="menu_help")],
+        ]
+        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        await message.answer(
+            "👋 **ReupMaster Pro Bot**\n\n"
+            "Chọn tính năng bạn muốn sử dụng:",
+            reply_markup=markup, parse_mode="Markdown"
+        )
+    else:
+        # Guest: Download-only mode
+        await message.answer(
+            "👋 **Chào bạn!**\n\n"
+            "🎬 Gửi cho tôi link video từ TikTok, Douyin, RedNote, Facebook...\n"
+            "Tôi sẽ tự động tải về và gửi lại cho bạn ngay!",
+            parse_mode="Markdown"
+        )
 
 
 # ═══════════════════════════════════════════
@@ -103,6 +89,9 @@ async def menu_reup(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "menu_library")
 async def menu_library(callback: CallbackQuery):
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("⚠️ Tính năng này chỉ dành cho Admin.", show_alert=True)
+        return
     stats = await db.get_stats()
     total = stats.get("total_videos", 0)
     downloaded = stats.get("downloaded", 0)
@@ -120,6 +109,9 @@ async def menu_library(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "menu_pages")
 async def menu_pages(callback: CallbackQuery):
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("⚠️ Tính năng này chỉ dành cho Admin.", show_alert=True)
+        return
     pages = await db.get_all_fb_pages()
     text = "📄 **Danh sách Fanpage & Kênh**\n\n"
     if not pages:
@@ -137,6 +129,9 @@ async def menu_pages(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "menu_stats")
 async def menu_stats(callback: CallbackQuery):
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("⚠️ Tính năng này chỉ dành cho Admin.", show_alert=True)
+        return
     stats = await db.get_stats()
     await callback.message.edit_text(
         f"📊 **Thống kê hệ thống**\n\n"
@@ -169,6 +164,9 @@ async def menu_help(callback: CallbackQuery):
 # ═══════════════════════════════════════════
 @dp.message(F.text.startswith("EA") | F.text.startswith("tele:"))
 async def handle_tokens(message: Message, state: FSMContext):
+    if not _is_admin(message.from_user.id):
+        await message.answer("⚠️ Tính năng này chỉ dành cho Admin.")
+        return
     token = message.text.strip()
     msg = await message.answer("🔄 Đang xử lý Token...")
     try:
@@ -239,6 +237,9 @@ async def handle_tokens(message: Message, state: FSMContext):
 @dp.message(F.video)
 async def handle_uploaded_video(message: Message, state: FSMContext):
     user_id = message.from_user.id
+    if not _is_admin(user_id):
+        await message.answer("⚠️ Tính năng upload video chỉ dành cho Admin.")
+        return
     import uuid
     video_id = str(uuid.uuid4())[:8]
     
@@ -287,6 +288,9 @@ async def handle_uploaded_video(message: Message, state: FSMContext):
 @dp.message(F.photo)
 async def handle_uploaded_photo(message: Message, state: FSMContext):
     user_id = message.from_user.id
+    if not _is_admin(user_id):
+        await message.answer("⚠️ Tính năng upload ảnh chỉ dành cho Admin.")
+        return
     import uuid
     video_id = str(uuid.uuid4())[:8]
     
@@ -331,6 +335,9 @@ async def handle_uploaded_photo(message: Message, state: FSMContext):
 @dp.message(F.document)
 async def handle_uploaded_document(message: Message, state: FSMContext):
     user_id = message.from_user.id
+    if not _is_admin(user_id):
+        await message.answer("⚠️ Tính năng upload file chỉ dành cho Admin.")
+        return
     mime_type = message.document.mime_type or ""
     file_name = message.document.file_name or ""
     
@@ -436,6 +443,18 @@ async def handle_url(message: Message, state: FSMContext):
         await message.answer("⚠️ Bot hiện chưa hỗ trợ quét nguyên Profile RedNote. Vui lòng sử dụng Crawler trên máy tính hoặc gửi từng link bài viết riêng lẻ.")
         return
 
+    is_admin = _is_admin(message.from_user.id)
+
+    if not is_admin:
+        # Guest: Only download video option
+        keyboard = [
+            [InlineKeyboardButton(text="🎬 Tải Video", callback_data="dl_video_guest")],
+        ]
+        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        await message.answer("📎 Đã nhận link!\n\nBấm nút bên dưới để tải video:", reply_markup=markup)
+        return
+
+    # Admin: Full options
     keyboard = []
     if is_douyin_profile:
         keyboard.append([InlineKeyboardButton(text="🕵️ Quét Profile Douyin", callback_data="dl_profile_douyin")])
@@ -568,6 +587,72 @@ async def handle_dl_video(callback: CallbackQuery, state: FSMContext):
         await send_process_options(callback.message, user_id)
     except Exception as e:
         logger.error(f"Telegram dl_video error: {e}")
+        await callback.message.edit_text(f"❌ Lỗi: {str(e)}")
+
+
+@dp.callback_query(F.data == "dl_video_guest")
+async def handle_dl_video_guest(callback: CallbackQuery, state: FSMContext):
+    """Guest mode: Download video and send directly, no processing/reup."""
+    user_id = callback.from_user.id
+    if user_id not in user_sessions or "url" not in user_sessions[user_id]:
+        await callback.message.edit_text("❌ Session đã hết hạn. Vui lòng gửi lại link.")
+        return
+
+    url = user_sessions[user_id]["url"]
+    await callback.message.edit_text("⏳ Đang tải Video cho bạn...")
+
+    try:
+        import uuid
+        from app.services.downloader import detect_platform
+        video_id = str(uuid.uuid4())[:8]
+        platform = detect_platform(url)
+
+        await db.create_video({
+            "id": video_id,
+            "source_url": url,
+            "source_platform": platform,
+            "status": "downloading"
+        })
+
+        result = await download_video(url, video_id=video_id)
+        if "error" in result:
+            await callback.message.edit_text(f"❌ Lỗi tải video: {result.get('error')}")
+            return
+
+        # Get downloaded video info
+        video = await db.get_video(video_id)
+        video_path = video.get("original_path", "") if video else ""
+
+        if not video_path or not os.path.isfile(video_path):
+            await callback.message.edit_text("❌ Không tìm thấy file video sau khi tải.")
+            return
+
+        file_size = os.path.getsize(video_path)
+        if file_size > 50 * 1024 * 1024:
+            await callback.message.edit_text(
+                "✅ Tải xong!\n⚠️ File quá lớn (>50MB) để gửi qua Telegram.\n"
+                "Vui lòng liên hệ Admin để tải video này."
+            )
+            return
+
+        await callback.message.edit_text("✅ Tải xong! Đang gửi video...")
+
+        from aiogram.types import FSInputFile
+        title = video.get("title", "Video") if video else "Video"
+        await bot.send_video(
+            user_id, FSInputFile(video_path),
+            caption=f"🎬 {title}"
+        )
+
+        # Cleanup: delete downloaded file to save VPS space
+        try:
+            os.remove(video_path)
+            await db.delete_video(video_id)
+        except Exception:
+            pass
+
+    except Exception as e:
+        logger.error(f"Telegram dl_video_guest error: {e}")
         await callback.message.edit_text(f"❌ Lỗi: {str(e)}")
 
 
